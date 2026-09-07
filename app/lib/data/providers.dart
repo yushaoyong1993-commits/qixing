@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../domain/stats/aggregate.dart' as k;
 import '../domain/stats/aggregate_service.dart';
 import 'activity_repository.dart';
+import 'route_repository.dart';
 
 /// 数据库连接。运行时在 main 中通过 override 注入（文件库）；
 /// 测试用 override 注入内存库（openInMemoryDatabase）。
@@ -21,4 +22,12 @@ final aggregateServiceProvider = Provider<AggregateService>(
 /// 全部骑行（倒序）的反应式流：保存/删除后自动推新（Drift watch）。
 final ridesProvider = StreamProvider<List<k.RideLite>>(
   (ref) => ref.watch(aggregateServiceProvider).watchRides(),
+);
+
+final routeRepositoryProvider = Provider<RouteRepository>(
+  (ref) => RouteRepository(ref.watch(databaseProvider)),
+);
+
+final routesProvider = StreamProvider<List<RouteModel>>(
+  (ref) => ref.watch(routeRepositoryProvider).watchRoutes(),
 );

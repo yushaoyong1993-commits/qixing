@@ -75,6 +75,16 @@ class SummaryCache extends Table {
   Set<Column> get primaryKey => {periodKind, bucketKey};
 }
 
+/// 路线（M1 手绘；M2 规划/转存）
+class Routes extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get name => text()();
+  TextColumn get pointsJson => text()();
+  RealColumn get distKm => real().withDefault(const Constant(0))();
+  DateTimeColumn get createdAt => dateTime()();
+  TextColumn get source => text().withDefault(const Constant('手绘'))();
+}
+
 /// 用户设置 KV
 class Settings extends Table {
   TextColumn get key => text()();
@@ -84,10 +94,20 @@ class Settings extends Table {
   Set<Column> get primaryKey => {key};
 }
 
-@DriftDatabase(tables: [Activities, TrackPoints, Laps, Drafts, SummaryCache, Settings])
+@DriftDatabase(tables: [Activities, TrackPoints, Laps, Drafts, SummaryCache, Settings, Routes])
 class BashoDatabase extends _$BashoDatabase {
   BashoDatabase(super.e);
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onCreate: (m) => m.createAll(),
+        onUpgrade: (m, from, to) async {
+          if (from < 2) {
+            await m.createTable(routes);
+          }
+        },
+      );
 }

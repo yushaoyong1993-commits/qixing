@@ -2853,6 +2853,397 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
   }
 }
 
+class $RoutesTable extends Routes with TableInfo<$RoutesTable, Route> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $RoutesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _pointsJsonMeta = const VerificationMeta(
+    'pointsJson',
+  );
+  @override
+  late final GeneratedColumn<String> pointsJson = GeneratedColumn<String>(
+    'points_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _distKmMeta = const VerificationMeta('distKm');
+  @override
+  late final GeneratedColumn<double> distKm = GeneratedColumn<double>(
+    'dist_km',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sourceMeta = const VerificationMeta('source');
+  @override
+  late final GeneratedColumn<String> source = GeneratedColumn<String>(
+    'source',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('手绘'),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    name,
+    pointsJson,
+    distKm,
+    createdAt,
+    source,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'routes';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<Route> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('points_json')) {
+      context.handle(
+        _pointsJsonMeta,
+        pointsJson.isAcceptableOrUnknown(data['points_json']!, _pointsJsonMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_pointsJsonMeta);
+    }
+    if (data.containsKey('dist_km')) {
+      context.handle(
+        _distKmMeta,
+        distKm.isAcceptableOrUnknown(data['dist_km']!, _distKmMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('source')) {
+      context.handle(
+        _sourceMeta,
+        source.isAcceptableOrUnknown(data['source']!, _sourceMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  Route map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return Route(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      pointsJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}points_json'],
+      )!,
+      distKm: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}dist_km'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      source: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source'],
+      )!,
+    );
+  }
+
+  @override
+  $RoutesTable createAlias(String alias) {
+    return $RoutesTable(attachedDatabase, alias);
+  }
+}
+
+class Route extends DataClass implements Insertable<Route> {
+  final int id;
+  final String name;
+  final String pointsJson;
+  final double distKm;
+  final DateTime createdAt;
+  final String source;
+  const Route({
+    required this.id,
+    required this.name,
+    required this.pointsJson,
+    required this.distKm,
+    required this.createdAt,
+    required this.source,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['name'] = Variable<String>(name);
+    map['points_json'] = Variable<String>(pointsJson);
+    map['dist_km'] = Variable<double>(distKm);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['source'] = Variable<String>(source);
+    return map;
+  }
+
+  RoutesCompanion toCompanion(bool nullToAbsent) {
+    return RoutesCompanion(
+      id: Value(id),
+      name: Value(name),
+      pointsJson: Value(pointsJson),
+      distKm: Value(distKm),
+      createdAt: Value(createdAt),
+      source: Value(source),
+    );
+  }
+
+  factory Route.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return Route(
+      id: serializer.fromJson<int>(json['id']),
+      name: serializer.fromJson<String>(json['name']),
+      pointsJson: serializer.fromJson<String>(json['pointsJson']),
+      distKm: serializer.fromJson<double>(json['distKm']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      source: serializer.fromJson<String>(json['source']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'name': serializer.toJson<String>(name),
+      'pointsJson': serializer.toJson<String>(pointsJson),
+      'distKm': serializer.toJson<double>(distKm),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'source': serializer.toJson<String>(source),
+    };
+  }
+
+  Route copyWith({
+    int? id,
+    String? name,
+    String? pointsJson,
+    double? distKm,
+    DateTime? createdAt,
+    String? source,
+  }) => Route(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    pointsJson: pointsJson ?? this.pointsJson,
+    distKm: distKm ?? this.distKm,
+    createdAt: createdAt ?? this.createdAt,
+    source: source ?? this.source,
+  );
+  Route copyWithCompanion(RoutesCompanion data) {
+    return Route(
+      id: data.id.present ? data.id.value : this.id,
+      name: data.name.present ? data.name.value : this.name,
+      pointsJson: data.pointsJson.present
+          ? data.pointsJson.value
+          : this.pointsJson,
+      distKm: data.distKm.present ? data.distKm.value : this.distKm,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      source: data.source.present ? data.source.value : this.source,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('Route(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('pointsJson: $pointsJson, ')
+          ..write('distKm: $distKm, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('source: $source')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, name, pointsJson, distKm, createdAt, source);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is Route &&
+          other.id == this.id &&
+          other.name == this.name &&
+          other.pointsJson == this.pointsJson &&
+          other.distKm == this.distKm &&
+          other.createdAt == this.createdAt &&
+          other.source == this.source);
+}
+
+class RoutesCompanion extends UpdateCompanion<Route> {
+  final Value<int> id;
+  final Value<String> name;
+  final Value<String> pointsJson;
+  final Value<double> distKm;
+  final Value<DateTime> createdAt;
+  final Value<String> source;
+  const RoutesCompanion({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.pointsJson = const Value.absent(),
+    this.distKm = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.source = const Value.absent(),
+  });
+  RoutesCompanion.insert({
+    this.id = const Value.absent(),
+    required String name,
+    required String pointsJson,
+    this.distKm = const Value.absent(),
+    required DateTime createdAt,
+    this.source = const Value.absent(),
+  }) : name = Value(name),
+       pointsJson = Value(pointsJson),
+       createdAt = Value(createdAt);
+  static Insertable<Route> custom({
+    Expression<int>? id,
+    Expression<String>? name,
+    Expression<String>? pointsJson,
+    Expression<double>? distKm,
+    Expression<DateTime>? createdAt,
+    Expression<String>? source,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (name != null) 'name': name,
+      if (pointsJson != null) 'points_json': pointsJson,
+      if (distKm != null) 'dist_km': distKm,
+      if (createdAt != null) 'created_at': createdAt,
+      if (source != null) 'source': source,
+    });
+  }
+
+  RoutesCompanion copyWith({
+    Value<int>? id,
+    Value<String>? name,
+    Value<String>? pointsJson,
+    Value<double>? distKm,
+    Value<DateTime>? createdAt,
+    Value<String>? source,
+  }) {
+    return RoutesCompanion(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      pointsJson: pointsJson ?? this.pointsJson,
+      distKm: distKm ?? this.distKm,
+      createdAt: createdAt ?? this.createdAt,
+      source: source ?? this.source,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (pointsJson.present) {
+      map['points_json'] = Variable<String>(pointsJson.value);
+    }
+    if (distKm.present) {
+      map['dist_km'] = Variable<double>(distKm.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (source.present) {
+      map['source'] = Variable<String>(source.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RoutesCompanion(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('pointsJson: $pointsJson, ')
+          ..write('distKm: $distKm, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('source: $source')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$BashoDatabase extends GeneratedDatabase {
   _$BashoDatabase(QueryExecutor e) : super(e);
   $BashoDatabaseManager get managers => $BashoDatabaseManager(this);
@@ -2862,6 +3253,7 @@ abstract class _$BashoDatabase extends GeneratedDatabase {
   late final $DraftsTable drafts = $DraftsTable(this);
   late final $SummaryCacheTable summaryCache = $SummaryCacheTable(this);
   late final $SettingsTable settings = $SettingsTable(this);
+  late final $RoutesTable routes = $RoutesTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -2873,6 +3265,7 @@ abstract class _$BashoDatabase extends GeneratedDatabase {
     drafts,
     summaryCache,
     settings,
+    routes,
   ];
 }
 
@@ -4787,6 +5180,222 @@ typedef $$SettingsTableProcessedTableManager =
       Setting,
       PrefetchHooks Function()
     >;
+typedef $$RoutesTableCreateCompanionBuilder = RoutesCompanion Function({
+  Value<int> id,
+  required String name,
+  required String pointsJson,
+  Value<double> distKm,
+  required DateTime createdAt,
+  Value<String> source,
+});
+typedef $$RoutesTableUpdateCompanionBuilder = RoutesCompanion Function({
+  Value<int> id,
+  Value<String> name,
+  Value<String> pointsJson,
+  Value<double> distKm,
+  Value<DateTime> createdAt,
+  Value<String> source,
+});
+
+class $$RoutesTableFilterComposer
+    extends Composer<_$BashoDatabase, $RoutesTable> {
+  $$RoutesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get pointsJson => $composableBuilder(
+    column: $table.pointsJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get distKm => $composableBuilder(
+    column: $table.distKm,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$RoutesTableOrderingComposer
+    extends Composer<_$BashoDatabase, $RoutesTable> {
+  $$RoutesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get pointsJson => $composableBuilder(
+    column: $table.pointsJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get distKm => $composableBuilder(
+    column: $table.distKm,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$RoutesTableAnnotationComposer
+    extends Composer<_$BashoDatabase, $RoutesTable> {
+  $$RoutesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get pointsJson => $composableBuilder(
+    column: $table.pointsJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get distKm =>
+      $composableBuilder(column: $table.distKm, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<String> get source =>
+      $composableBuilder(column: $table.source, builder: (column) => column);
+}
+
+class $$RoutesTableTableManager
+    extends
+        RootTableManager<
+          _$BashoDatabase,
+          $RoutesTable,
+          Route,
+          $$RoutesTableFilterComposer,
+          $$RoutesTableOrderingComposer,
+          $$RoutesTableAnnotationComposer,
+          $$RoutesTableCreateCompanionBuilder,
+          $$RoutesTableUpdateCompanionBuilder,
+          (Route, BaseReferences<_$BashoDatabase, $RoutesTable, Route>),
+          Route,
+          PrefetchHooks Function()
+        > {
+  $$RoutesTableTableManager(_$BashoDatabase db, $RoutesTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$RoutesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$RoutesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$RoutesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String> pointsJson = const Value.absent(),
+                Value<double> distKm = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<String> source = const Value.absent(),
+              }) => RoutesCompanion(
+                id: id,
+                name: name,
+                pointsJson: pointsJson,
+                distKm: distKm,
+                createdAt: createdAt,
+                source: source,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String name,
+                required String pointsJson,
+                Value<double> distKm = const Value.absent(),
+                required DateTime createdAt,
+                Value<String> source = const Value.absent(),
+              }) => RoutesCompanion.insert(
+                id: id,
+                name: name,
+                pointsJson: pointsJson,
+                distKm: distKm,
+                createdAt: createdAt,
+                source: source,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$RoutesTable, Route>(table),
+                  BaseReferences<_$BashoDatabase, $RoutesTable, Route>(
+                    db,
+                    table,
+                    e,
+                  ),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$RoutesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$BashoDatabase,
+      $RoutesTable,
+      Route,
+      $$RoutesTableFilterComposer,
+      $$RoutesTableOrderingComposer,
+      $$RoutesTableAnnotationComposer,
+      $$RoutesTableCreateCompanionBuilder,
+      $$RoutesTableUpdateCompanionBuilder,
+      (Route, BaseReferences<_$BashoDatabase, $RoutesTable, Route>),
+      Route,
+      PrefetchHooks Function()
+    >;
 
 class $BashoDatabaseManager {
   final _$BashoDatabase _db;
@@ -4802,4 +5411,6 @@ class $BashoDatabaseManager {
       $$SummaryCacheTableTableManager(_db, _db.summaryCache);
   $$SettingsTableTableManager get settings =>
       $$SettingsTableTableManager(_db, _db.settings);
+  $$RoutesTableTableManager get routes =>
+      $$RoutesTableTableManager(_db, _db.routes);
 }
