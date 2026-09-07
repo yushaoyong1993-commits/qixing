@@ -5,6 +5,7 @@ import '../../core/periods.dart';
 import '../../data/providers.dart';
 import '../../domain/stats/aggregate.dart' as k;
 import '../../theme/app_theme.dart';
+import 'stats_page.dart';
 
 /// 首页（M1）：真实数据驱动——概览卡(今日/本周/本月) + 最近活动 + 空态。
 /// 数据源：AggregateService.watchRides()（Drift watch，保存后自动刷新）。
@@ -27,13 +28,18 @@ class _HomePageState extends ConsumerState<HomePage> {
         children: [
           _HeroStartButton(onPressed: () => _coming(context)),
           const SizedBox(height: 12),
-          _overviewCard(rides),
+          _cardLink(context,_overviewCard(rides)),
           const SizedBox(height: 18),
           _recent(rides),
         ],
       ),
     );
   }
+
+  Widget _cardLink(BuildContext context, Widget child) => GestureDetector(
+        onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const StatsPage())),
+        child: child,
+      );
 
   Widget _overviewCard(List<k.RideLite> rides) {
     final now = DateTime.now();
