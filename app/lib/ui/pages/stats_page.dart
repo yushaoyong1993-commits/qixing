@@ -197,11 +197,9 @@ class _StatsPageState extends ConsumerState<StatsPage> {
         alignment: Alignment.center,
         child: day == null
             ? null
-            : Text(day, style: TextStyle(fontSize: 10, color: tColor(km), fontWeight: km != null && km / max > 0.7 ? FontWeight.w700 : FontWeight.w400)),
+            : Text(day, style: TextStyle(fontSize: 10, color: (km != null && km / max > 0.55) ? Colors.white : AppTheme.txt2, fontWeight: km != null && km / max > 0.7 ? FontWeight.w700 : FontWeight.w400)),
       );
     }
-
-    Color tColor(double? km) => km != null && km / max > 0.55 ? Colors.white : AppTheme.txt2;
 
     final cells = <Widget>[
       for (var i = 0; i < lead; i++) cell(null, null),
