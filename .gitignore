@@ -5,3 +5,4 @@ app/.dart_tool/
 *.iml
 .DS_Store
 __pycache__/
+.darthome/

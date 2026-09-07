@@ -11,7 +11,6 @@ class SessionMachine {
   int _movingSec = 0;
   int _lapCount = 0;
   bool _autoPause = true;
-  bool _autoPaused = false;
 
   SessionPhase get phase => _phase;
   double get distanceKm => _distanceKm;
@@ -28,7 +27,6 @@ class SessionMachine {
     if (isActive || _phase == SessionPhase.summary) return false;
     _phase = SessionPhase.recording;
     _autoPause = autoPause;
-    _autoPaused = false;
     return true;
   }
 
@@ -49,7 +47,6 @@ class SessionMachine {
   bool resume() {
     if (_phase != SessionPhase.paused) return false;
     _phase = SessionPhase.recording;
-    _autoPaused = false;
     return true;
   }
 
@@ -78,7 +75,6 @@ class SessionMachine {
   void advance({required double dtSec, required double speedKmh, bool stopped = false}) {
     if (_phase != SessionPhase.recording) return;
     if (_autoPause && stopped) {
-      _autoPaused = true;
       _phase = SessionPhase.paused;
       return;
     }
