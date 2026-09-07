@@ -1,0 +1,1455 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>跋涉 · 原型 v1.6（统计 P0 全量：热力图/趋势/窗口纪录）</title>
+<style>
+  :root{
+    --bg:#ffffff; --bg2:#f5f5f7; --card:#ffffff; --card2:#f2f2f5;
+    --line:rgba(17,17,21,.09);
+    --txt:#1b1b1f; --txt2:#5d5d67; --txt3:#9898a3;
+    --acc:#fc4c02; --acc2:#d64400; --acc-dim:rgba(252,76,2,.10);
+    --ok:#188a57; --warn:#b98900;
+    --r:16px; --r-s:12px;
+    --shadow:0 14px 40px rgba(30,30,40,.10), 0 2px 8px rgba(30,30,40,.06);
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:radial-gradient(1100px 520px at 50% -8%, #ffffff 0%, #ececef 60%, #e6e6ea 100%) fixed;
+    color:var(--txt);
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    min-height:100vh;
+  }
+  /* ---------- page header (desktop preview area) ---------- */
+  .pagehead{max-width:1180px;margin:0 auto;padding:26px 22px 6px;display:flex;flex-wrap:wrap;gap:18px;align-items:flex-end;justify-content:space-between;}
+  .brand{display:flex;align-items:center;gap:12px;}
+  .logo{width:44px;height:44px;border-radius:14px;background:linear-gradient(135deg,var(--acc),#ff9a3c);display:grid;place-items:center;box-shadow:0 6px 18px rgba(252,76,2,.25);}
+  .logo svg{width:26px;height:26px;}
+  .brand h1{margin:0;font-size:19px;letter-spacing:.5px;color:var(--txt);}
+  .brand p{margin:2px 0 0;color:var(--txt3);font-size:12px;}
+  .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;}
+  .ctl{display:flex;flex-direction:column;gap:6px;}
+  .ctl .cap{font-size:11px;color:var(--txt3);letter-spacing:1px;}
+  .seg{display:flex;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:3px;gap:2px;box-shadow:0 1px 4px rgba(20,20,30,.05);}
+  .seg button{border:0;background:transparent;color:var(--txt2);padding:7px 13px;border-radius:9px;font-size:13px;cursor:pointer;white-space:nowrap;transition:.15s;}
+  .seg button.on{background:var(--acc-dim);color:var(--acc2);font-weight:600;}
+  .seg button:not(.on):hover{color:var(--txt);background:var(--card2);}
+  .hint{color:var(--txt3);font-size:12px;line-height:1.7;flex-basis:100%;margin:2px 0 0;}
+  /* ---------- phone frame ---------- */
+  .stage{display:flex;justify-content:center;padding:26px 12px 60px;}
+  .frame{
+    width:400px;max-width:100%;height:min(880px,94vh);
+    background:var(--bg);border-radius:36px;overflow:hidden;position:relative;
+    border:1px solid rgba(20,20,28,.12);box-shadow:var(--shadow);
+    display:flex;flex-direction:column;
+  }
+  @media (max-width:480px){
+    .frame{height:100vh;height:100dvh;border-radius:0;border:0;box-shadow:none;max-height:none;}
+  }
+  .statusbar{flex:none;display:flex;justify-content:space-between;align-items:center;padding:14px 20px 4px;font-size:14px;font-weight:600;color:var(--txt);}
+  .statusbar .time{letter-spacing:1px;}
+  .statusbar .tag-app{font-size:12px;color:var(--txt3);font-weight:500;}
+  .statusbar .icons{display:flex;gap:5px;align-items:center;color:var(--txt);}
+  .screen{flex:1;overflow-y:auto;overflow-x:hidden;padding:4px 16px 20px;scrollbar-width:none;}
+  .screen::-webkit-scrollbar{display:none;}
+  /* banners */
+  .banner{margin:8px 0;border-radius:var(--r-s);padding:10px 12px;display:none;align-items:center;gap:10px;font-size:13px;animation:pop .25s ease;}
+  @keyframes pop{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:none;}}
+  .banner.live{background:rgba(252,76,2,.08);border:1px solid rgba(252,76,2,.30);display:flex;}
+  .banner .dot{width:9px;height:9px;border-radius:50%;background:var(--acc);box-shadow:0 0 0 0 rgba(252,76,2,.45);animation:pulse 1.4s infinite;flex:none;}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(252,76,2,.45);}70%{box-shadow:0 0 0 8px rgba(252,76,2,0);}100%{box-shadow:0 0 0 0 rgba(252,76,2,0);}}
+  .banner .b-main{flex:1;min-width:0;}
+  .banner .b-main b{display:block;font-size:13px;color:var(--txt);}
+  .banner .b-main span{color:var(--txt2);font-size:12px;}
+  .banner.draft{background:rgba(245,180,10,.10);border:1px solid rgba(222,158,0,.30);}
+  .banner.slim{margin:4px 0 10px;padding:7px 12px;}
+  .pill{flex:none;border:0;border-radius:20px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;transition:.15s;}
+  .pill.primary{background:var(--acc);color:#fff;}
+  .pill.primary:hover{background:var(--acc2);}
+  .pill.ghost{background:rgba(17,17,21,.07);color:var(--txt);}
+  .pill.ghost:hover{background:rgba(17,17,21,.12);}
+  .pill.danger{background:rgba(255,69,58,.10);color:#d92d20;}
+  /* hero (home) */
+  .hero{
+    margin:12px 0 12px;border:0;width:100%;cursor:pointer;text-align:left;
+    background:linear-gradient(135deg,#ff6a1a 0%, var(--acc) 55%, #e23d00 100%);
+    border-radius:var(--r);padding:18px;display:flex;align-items:center;gap:14px;
+    box-shadow:0 12px 26px rgba(252,76,2,.28);transition:transform .12s;color:#fff;
+  }
+  .hero:active{transform:scale(.985);}
+  .hero .ring{flex:none;width:60px;height:60px;border-radius:50%;background:rgba(255,255,255,.18);border:2px solid rgba(255,255,255,.55);display:grid;place-items:center;}
+  .hero .ring svg{width:28px;height:28px;}
+  .hero .t{flex:1;min-width:0;}
+  .hero .t b{display:block;font-size:22px;letter-spacing:1px;}
+  .hero .t span{font-size:12.5px;opacity:.88;display:block;margin-top:3px;}
+  .hero .chev{flex:none;opacity:.85;}
+  /* card & sections */
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px;box-shadow:0 1px 3px rgba(20,20,30,.03);}
+  .sec-title{display:flex;align-items:baseline;justify-content:space-between;margin:18px 2px 10px;}
+  .sec-title h3{margin:0;font-size:15px;color:var(--txt);}
+  .sec-title a{color:var(--acc2);font-size:13px;text-decoration:none;cursor:pointer;font-weight:500;}
+  /* overview */
+  .seg-period{display:flex;background:var(--card2);border-radius:10px;padding:3px;gap:2px;margin-bottom:12px;}
+  .seg-period button{flex:1;border:0;background:transparent;color:var(--txt2);padding:7px 0;border-radius:8px;font-size:13px;cursor:pointer;}
+  .seg-period button.on{background:var(--card);color:var(--txt);font-weight:600;box-shadow:0 1px 4px rgba(20,20,30,.10);}
+  .ov-grid{display:flex;}
+  .ov-item{flex:1;text-align:center;position:relative;}
+  .ov-item + .ov-item::before{content:"";position:absolute;left:0;top:12%;height:76%;width:1px;background:var(--line);}
+  .ov-item .v{font-size:21px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--txt);}
+  .ov-item .k{font-size:11px;color:var(--txt3);margin-top:3px;letter-spacing:1px;}
+  .ov-delta{display:flex;gap:14px;margin-top:12px;padding-top:10px;border-top:1px dashed var(--line);font-size:12px;color:var(--txt2);}
+  .ov-delta b{font-variant-numeric:tabular-nums;}
+  .ov-delta .up{color:var(--ok);} .ov-delta .down{color:#d92d20;}
+  /* last ride card */
+  .lastcard{display:flex;gap:12px;align-items:stretch;cursor:pointer;transition:background .12s;}
+  .lastcard:hover{background:var(--bg2);}
+  .mini-map{flex:0 0 118px;height:96px;border-radius:var(--r-s);overflow:hidden;position:relative;background:#e9ebef;border:1px solid var(--line);}
+  .mini-map svg{width:100%;height:100%;display:block;}
+  .lastmeta{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:3px;}
+  .lastmeta .lab{font-size:11px;color:var(--txt3);letter-spacing:1px;}
+  .lastmeta b{font-size:16px;color:var(--txt);}
+  .lastmeta .st{font-size:12px;color:var(--txt2);}
+  .statline{display:flex;gap:10px;margin-top:4px;font-size:12px;color:var(--txt2);font-variant-numeric:tabular-nums;}
+  .statline b{color:var(--txt);font-weight:600;}
+  /* recent list */
+  .rows{border-top:1px solid var(--line);}
+  .row{display:flex;align-items:center;gap:12px;padding:11px 2px;border-bottom:1px solid var(--line);cursor:pointer;transition:background .12s;color:var(--txt);}
+  .row:hover{background:var(--bg2);}
+  .row:last-child{border-bottom:0;}
+  .row .ic{flex:none;width:40px;height:40px;border-radius:12px;display:grid;place-items:center;background:var(--card2);}
+  .row .ic svg{width:20px;height:20px;color:var(--acc2);}
+  .row .ic.imp{background:var(--bg2);}
+  .row .ic.imp svg{color:var(--txt2);}
+  .row .m{flex:1;min-width:0;}
+  .row .m b{display:block;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--txt);}
+  .row .m span{font-size:12px;color:var(--txt3);}
+  .row .r{text-align:right;flex:none;}
+  .row .r b{display:block;font-size:13.5px;font-variant-numeric:tabular-nums;color:var(--txt);}
+  .row .r span{font-size:11.5px;color:var(--txt3);}
+  .tag{display:inline-block;font-size:10px;padding:1px 6px;border-radius:6px;background:var(--card2);color:var(--txt2);margin-left:6px;vertical-align:1px;font-weight:500;}
+  /* empty state */
+  .empty-card{text-align:center;padding:26px 16px;}
+  .empty-card .em{width:86px;height:86px;margin:0 auto 12px;border-radius:50%;background:var(--card2);display:grid;place-items:center;color:var(--txt3);}
+  .empty-card h4{margin:0 0 6px;font-size:16px;color:var(--txt);}
+  .empty-card p{margin:0 0 16px;color:var(--txt3);font-size:12.5px;line-height:1.6;}
+  .empty-card .btns{display:flex;flex-direction:column;gap:8px;max-width:230px;margin:0 auto;}
+  .btn{border:0;border-radius:12px;padding:12px;font-size:14px;font-weight:600;cursor:pointer;transition:.15s;}
+  .btn.pri{background:var(--acc);color:#fff;box-shadow:0 6px 14px rgba(252,76,2,.25);}
+  .btn.pri:hover{background:var(--acc2);}
+  .btn.sec{background:var(--card2);color:var(--txt);}
+  .btn.sec:hover{background:var(--line);}
+  .ph{padding:30px 4px;text-align:center;color:var(--txt3);}
+  .ph .big{font-size:40px;margin-bottom:10px;opacity:.55;}
+  .ph h3{color:var(--txt);margin:0 0 6px;font-size:16px;}
+  .ph p{font-size:12.5px;line-height:1.7;margin:0 auto;max-width:280px;}
+  /* map page */
+  .map-topbar{display:flex;align-items:center;gap:8px;margin:8px 0 10px;}
+  .seg-map{flex:0 0 auto;}
+  .locbtn{width:38px;height:38px;border-radius:12px;border:1px solid var(--line);background:var(--card);display:grid;place-items:center;color:var(--txt2);cursor:pointer;flex:none;transition:.15s;}
+  .locbtn:hover{color:var(--acc2);border-color:rgba(252,76,2,.4);}
+  .locbtn svg{width:18px;height:18px;}
+  .fake-search{display:flex;align-items:center;gap:9px;background:var(--card);border:1px solid var(--line);border-radius:13px;padding:11px 13px;color:var(--txt3);font-size:13px;cursor:pointer;margin-bottom:10px;transition:.15s;}
+  .fake-search:hover{border-color:rgba(252,76,2,.4);color:var(--txt2);}
+  .fake-search svg{width:15px;height:15px;flex:none;}
+  .map-main{height:200px;border-radius:var(--r);overflow:hidden;position:relative;background:#e9ebef;border:1px solid var(--line);}
+  .map-main svg{width:100%;height:100%;display:block;}
+  .map-note{font-size:11px;color:var(--txt3);margin:10px 2px 0;text-align:center;line-height:1.6;}
+  .routemap{flex:none;width:74px;height:54px;border-radius:9px;overflow:hidden;border:1px solid var(--line);background:#e9ebef;align-self:center;}
+  .routemap svg{width:100%;height:100%;display:block;}
+  /* record page ---- prepare */
+  .rec-prep{padding:18px 2px 6px;}
+  .rec-prep-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+  .rec-prep-head h2{margin:0;font-size:20px;color:var(--txt);}
+  .rec-gps{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ok);background:rgba(24,138,87,.08);padding:5px 10px;border-radius:20px;font-weight:500;}
+  .gdot{width:7px;height:7px;border-radius:50%;background:var(--ok);flex:none;}
+  .chiprow{display:flex;gap:8px;margin-bottom:12px;}
+  .chip{flex:1;border:1px solid var(--line);background:var(--card);color:var(--txt2);padding:9px 0;border-radius:11px;font-size:13px;cursor:pointer;transition:.15s;white-space:nowrap;}
+  .chip.on{background:var(--acc-dim);border-color:rgba(252,76,2,.45);color:var(--acc2);font-weight:600;}
+  .prefcard{padding:4px 14px;margin-bottom:18px;}
+  .pref{display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:1px solid var(--line);}
+  .pref:last-child{border-bottom:0;}
+  .pref b{font-size:14px;display:block;color:var(--txt);}
+  .pref span{font-size:11.5px;color:var(--txt3);}
+  .sw{width:46px;height:27px;border-radius:20px;border:0;background:#d9d9df;position:relative;cursor:pointer;transition:.15s;flex:none;}
+  .sw::after{content:"";position:absolute;top:3px;left:3px;width:21px;height:21px;border-radius:50%;background:#fff;transition:.18s;box-shadow:0 1px 3px rgba(0,0,0,.22);}
+  .sw.on{background:var(--acc);}
+  .sw.on::after{left:22px;}
+  .rec-big-start{width:100%;border:0;border-radius:var(--r);padding:18px;display:flex;gap:10px;justify-content:center;align-items:center;background:linear-gradient(135deg,#ff6a1a 0%, var(--acc) 55%, #e23d00 100%);color:#fff;font-size:18px;font-weight:700;cursor:pointer;box-shadow:0 10px 22px rgba(252,76,2,.3);transition:transform .12s;}
+  .rec-big-start:active{transform:scale(.985);}
+  .rec-big-start svg{width:24px;height:24px;}
+  .rec-note{margin:14px 0 0;text-align:center;color:var(--txt3);font-size:12px;line-height:1.7;}
+  /* record page ---- live */
+  .rec-top{text-align:center;padding:12px 0 2px;}
+  .rec-topline{display:flex;justify-content:center;gap:8px;margin-bottom:4px;}
+  .rec-tag{font-size:11px;padding:3px 11px;border-radius:20px;background:var(--card2);color:var(--txt2);font-weight:600;}
+  .rec-tag.paused{background:rgba(222,158,0,.14);color:#9a6f00;}
+  .rec-timer{font-size:54px;font-weight:800;letter-spacing:1px;font-variant-numeric:tabular-nums;color:var(--txt);line-height:1.05;}
+  .rec-sub{color:var(--txt2);font-size:12.5px;margin-top:3px;}
+  .rec-map{height:150px;border-radius:var(--r);overflow:hidden;position:relative;background:#e6e8ec;margin:12px 0;border:1px solid var(--line);}
+  .rec-map svg{width:100%;height:100%;display:block;}
+  .rec-map .live-tag{position:absolute;top:8px;left:8px;background:rgba(255,255,255,.92);font-size:11px;color:#d92d20;font-weight:700;padding:3px 10px;border-radius:20px;box-shadow:0 1px 4px rgba(0,0,0,.12);font-variant-numeric:tabular-nums;}
+  .rec-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin:12px 0;box-shadow:0 1px 3px rgba(20,20,30,.03);}
+  .cell{background:var(--card);padding:11px 4px;text-align:center;}
+  .cell b{display:block;font-size:19px;font-variant-numeric:tabular-nums;color:var(--txt);}
+  .cell span{font-size:11px;color:var(--txt3);letter-spacing:.5px;}
+  .rec-btns{display:flex;justify-content:space-around;align-items:center;padding:6px 18px 0;}
+  .rbtn{width:62px;height:62px;border-radius:50%;border:0;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:11px;font-weight:600;transition:.15s;font-family:inherit;}
+  .rbtn svg{width:22px;height:22px;}
+  .rbtn.lap{background:var(--card2);color:var(--txt2);}
+  .rbtn.lap:active{transform:scale(.94);}
+  .rbtn.pause-b{background:rgba(222,158,0,.14);color:#9a6f00;}
+  .rbtn.finish{width:74px;height:74px;background:var(--acc);color:#fff;box-shadow:0 8px 20px rgba(252,76,2,.35);}
+  .rbtn.finish:active{transform:scale(.94);}
+  .abort-line{margin-top:16px;display:flex;justify-content:center;}
+  .abort-btn{border:0;background:none;color:var(--txt3);font-size:12.5px;cursor:pointer;text-decoration:underline;text-underline-offset:3px;}
+  .abort-btn.armed{color:#d92d20;font-weight:700;}
+  /* subpage header (stats / list / detail) */
+  .subhead{display:grid;grid-template-columns:44px 1fr 44px;align-items:center;margin:4px 0 2px;}
+  .subhead h2{margin:0;font-size:17px;color:var(--txt);text-align:center;}
+  .backbtn{width:38px;height:38px;border-radius:50%;border:1px solid var(--line);background:var(--card);color:var(--txt);font-size:22px;cursor:pointer;line-height:1;transition:.15s;}
+  .backbtn:hover{color:var(--acc2);border-color:rgba(252,76,2,.4);}
+  /* stats */
+  .grid2{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin:10px 0;}
+  .grid2 .cell{padding:13px 4px;}
+  .bars-wrap{padding:8px 4px 4px;}
+  .bars{display:flex;align-items:flex-end;gap:8px;height:104px;}
+  .bar{flex:1;display:flex;align-items:flex-end;justify-content:center;height:100%;}
+  .bar i{display:block;width:100%;max-width:30px;border-radius:6px 6px 3px 3px;background:linear-gradient(180deg,#ff9a55 0%, var(--acc) 80%);box-shadow:0 2px 5px rgba(252,76,2,.18);}
+  .bar i.zero{background:#eceef0;box-shadow:none;}
+  .bar-axis{display:flex;gap:8px;margin-top:8px;}
+  .bar-axis span{flex:1;text-align:center;font-size:10.5px;color:var(--txt3);}
+  .bar-axis span.today{color:var(--acc2);font-weight:700;}
+  /* me */
+  .me-top{display:flex;align-items:center;gap:14px;padding:16px 4px;}
+  .avatar{width:58px;height:58px;border-radius:50%;background:linear-gradient(135deg,#e8e8ec,#d9d9df);display:grid;place-items:center;color:var(--acc2);font-size:22px;font-weight:600;border:1px solid var(--line);}
+  .me-top b{font-size:16px;display:block;color:var(--txt);}
+  .me-top span{font-size:12px;color:var(--txt3);}
+  .me-list{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:4px 14px;}
+  .me-list .row{font-size:14px;}
+  .me-list .row .ic{width:34px;height:34px;border-radius:10px;font-size:16px;display:grid;place-items:center;background:var(--card2);}
+  .card.pad0{padding:0;overflow:hidden;}
+  /* push subpages (list/detail) */
+  .subpage{position:absolute;inset:0;background:var(--bg);z-index:38;display:none;flex-direction:column;}
+  .subpage.show{display:flex;}
+  .subpage .subhead{padding:6px 14px 0;flex:none;}
+  .sub-scroll{flex:1;overflow-y:auto;padding:2px 16px 24px;scrollbar-width:none;}
+  .sub-scroll::-webkit-scrollbar{display:none;}
+  .filter-scroll{display:flex;gap:8px;overflow-x:auto;padding:2px 0 10px;scrollbar-width:none;}
+  .filter-scroll::-webkit-scrollbar{display:none;}
+  .filter-scroll .chip{flex:0 0 auto;padding:7px 14px;}
+  .month-group .mg-head{display:flex;align-items:center;justify-content:space-between;color:var(--txt2);font-size:12px;font-weight:600;margin:12px 2px 2px;letter-spacing:1px;}
+  .detail-title{font-size:20px;font-weight:800;color:var(--txt);margin:6px 2px 2px;}
+  .detail-sub{font-size:12px;color:var(--txt3);margin:0 2px 10px;}
+  .stat-chip{font-size:11px;padding:3px 10px;border-radius:20px;background:var(--card2);color:var(--txt2);font-weight:600;}
+  .curve-box{padding:6px 2px 2px;}
+  .curve-box svg{width:100%;height:110px;display:block;}
+  .legend{display:flex;gap:14px;font-size:11px;color:var(--txt3);padding:4px 2px;}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px;}
+  .op-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:14px 0 4px;}
+  .op-grid .btn{padding:11px 0;font-size:13px;}
+  .act-list-empty{text-align:center;color:var(--txt3);font-size:13px;padding:40px 0;}
+  /* overlays */
+  .overlay{position:absolute;inset:0;background:rgba(250,250,252,.92);backdrop-filter:blur(8px);display:none;flex-direction:column;justify-content:center;padding:26px;z-index:30;overflow-y:auto;}
+  .overlay.show{display:flex;}
+  .overlay h2{margin:0 0 4px;font-size:20px;color:var(--txt);}
+  .overlay .ov-sub{color:var(--txt3);font-size:12.5px;margin-bottom:18px;}
+  .ov-list{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:6px 14px;margin-bottom:18px;box-shadow:0 1px 3px rgba(20,20,30,.04);}
+  .ov-list div{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px dashed var(--line);font-size:14px;color:var(--txt2);}
+  .ov-list div:last-child{border:0;}
+  .ov-list b{font-variant-numeric:tabular-nums;color:var(--txt);}
+  .save-btns{display:flex;flex-direction:column;gap:10px;}
+  .ov-close{position:absolute;top:22px;right:22px;width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:var(--card);color:var(--txt2);font-size:15px;cursor:pointer;z-index:2;}
+  .ov-close:hover{color:var(--acc2);}
+  .route-big{height:150px;border-radius:13px;overflow:hidden;margin-bottom:14px;border:1px solid var(--line);background:#e9ebef;position:relative;}
+  .route-big svg{width:100%;height:100%;display:block;}
+  /* text-only tabbar */
+  .tabbar{flex:none;display:flex;background:rgba(255,255,255,.96);backdrop-filter:blur(14px);border-top:1px solid var(--line);padding:6px 10px calc(8px + env(safe-area-inset-bottom));position:relative;z-index:20;}
+  .tab{flex:1;display:flex;align-items:center;justify-content:center;border:0;background:none;cursor:pointer;padding:9px 0 7px;border-radius:10px;color:var(--txt3);font-size:14px;letter-spacing:3px;position:relative;text-indent:3px;}
+  .tab:hover{color:var(--txt2);}
+  .tab.on{color:var(--acc2);font-weight:700;}
+  .tab.on::after{content:"";position:absolute;bottom:1px;left:50%;transform:translateX(-50%);width:20px;height:3px;border-radius:2px;background:var(--acc);}
+  /* toast */
+  .toast{position:absolute;left:50%;bottom:84px;transform:translate(-50%,16px);background:#2b2b33;color:#fff;font-size:13px;padding:10px 16px;border-radius:22px;box-shadow:0 10px 26px rgba(20,20,30,.28);opacity:0;pointer-events:none;transition:.25s;z-index:60;max-width:86%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .toast.show{opacity:1;transform:translate(-50%,0);}
+  /* stats P0: trend + heatmap */
+  .seg-mini{flex:0 0 auto;}
+  .seg-mini button{padding:5px 12px;font-size:12px;}
+  .trend-box{padding:6px 2px 2px;}
+  .trend-box svg{width:100%;height:128px;display:block;}
+  .heat-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+  .heat-head b{font-size:14px;color:var(--txt);font-weight:700;}
+  .heat-nav{width:28px;height:28px;border-radius:9px;border:1px solid var(--line);background:var(--card);color:var(--txt2);cursor:pointer;font-size:14px;line-height:1;}
+  .heat-nav:hover{color:var(--acc2);border-color:rgba(252,76,2,.4);}
+  .heat-wd{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:5px;}
+  .heat-wd span{text-align:center;font-size:10.5px;color:var(--txt3);}
+  .heat-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;}
+  .hcell{aspect-ratio:1;border-radius:8px;background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:11.5px;color:var(--txt2);cursor:pointer;border:1px solid transparent;transition:transform .1s;}
+  .hcell:hover{transform:scale(1.08);}
+  .hcell.empty{background:none;cursor:default;border:0;}
+  .hcell.today{outline:2px solid var(--acc2);outline-offset:1px;font-weight:800;color:var(--txt);}
+  .hcell.lv1{background:#ffeadd;color:#a84a00;}
+  .hcell.lv2{background:#ffc9a4;color:#8a3d00;}
+  .hcell.lv3{background:#ff9a55;color:#fff;font-weight:700;}
+  .hcell.lv4{background:var(--acc);color:#fff;font-weight:800;}
+  .heat-info{font-size:11.5px;color:var(--txt3);margin-top:8px;text-align:center;}
+  .none{display:none !important;}
+</style>
+</head>
+<body>
+
+<div class="pagehead">
+  <div class="brand">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 17l3-4.5M11 9l3-4.5M6 17a3 3 0 11-6 0 3 3 0 016 0zM15 11l4.5 6M15 11l3 2M12.5 14.5L15 11"/><circle cx="19.5" cy="17" r="2.6"/></svg>
+    </div>
+    <div>
+      <h1>跋涉 · 原型 v1.5</h1>
+      <p>骑行 App · 原型 v1.6 · 统计页 P0 全量（近7天 / 周月趋势 / 日历热力图 / 10·50·100km 纪录）· 浅色主题</p>
+    </div>
+  </div>
+  <div class="controls">
+    <div class="ctl">
+      <span class="cap">状态演示（首页）</span>
+      <div class="seg" id="segState">
+        <button data-v="data" class="on">有数据</button>
+        <button data-v="empty">空状态(首启)</button>
+        <button data-v="draft">草稿提示</button>
+      </div>
+    </div>
+    <div class="ctl">
+      <span class="cap">骑行演示</span>
+      <div class="seg" id="segRide">
+        <button data-v="start" class="on">记录中…</button>
+        <button data-v="idle">空闲</button>
+      </div>
+    </div>
+    <div class="ctl">
+      <span class="cap">操作</span>
+      <div class="seg" id="segOps">
+        <button data-v="save">结束并保存</button>
+        <button data-v="reset">重置演示数据</button>
+      </div>
+    </div>
+    <p class="hint">新页面：<b>活动列表</b>（首页最近活动「全部」进入，可按类型/导入筛选、月分组）与<b>活动详情</b>（最近活动行 / 上次轨迹卡 / 统计个人纪录 → 可编辑删除导出）。<br>记录进行中仍可切页查看，横幅常驻引导。右侧控制仅演示辅助。</p>
+  </div>
+</div>
+
+<div class="stage">
+  <div class="frame" id="frame">
+    <!-- status bar -->
+    <div class="statusbar">
+      <span class="time" id="sbTime">09:41</span>
+      <span class="tag-app" id="sbPage">跋涉 · 首页</span>
+      <span class="icons">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="1" y="8" width="4" height="10" rx="1.4"/><rect x="7" y="5" width="4" height="13" rx="1.4"/><rect x="13" y="10" width="4" height="8" rx="1.4"/><rect x="19" y="3" width="4" height="15" rx="1.4"/></svg>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M13 3a1 1 0 100 2h1.6l-4.3 13H8a1 1 0 100 2h5a1 1 0 100-2h-1.6l4.3-13H16a1 1 0 100-2h-3z"/></svg>
+        <svg width="19" height="13" viewBox="0 0 24 13" fill="none"><rect x="0.5" y="0.5" width="20" height="12" rx="3" stroke="currentColor" opacity=".4"/><rect x="2.5" y="2.5" width="14" height="8" rx="1.6" fill="currentColor"/><path d="M22.5 3v7a3 3 0 010-7z" fill="currentColor" opacity=".5"/></svg>
+      </span>
+    </div>
+
+    <!-- screen -->
+    <div class="screen" id="screen">
+      <!-- ============ PAGE: HOME (main + stats sub) ============ -->
+      <section id="pageHome">
+        <div id="homeMain">
+          <div class="banner draft" id="draftBanner">
+            <div class="b-main"><b>有未保存的记录草稿</b><span>09-06 08:12 开始 · 12.4 km</span></div>
+            <button class="pill ghost" onclick="window.P.do('draft','continue')">继续</button>
+            <button class="pill ghost" onclick="window.P.do('draft','save')">保存</button>
+            <button class="pill danger" onclick="window.P.do('draft','discard')">丢弃</button>
+          </div>
+          <div class="banner live" id="liveBanner">
+            <span class="dot"></span>
+            <div class="b-main"><b>骑行进行中 <span id="lbTime">00:00</span></b><span id="lbDist">0.0 km</span></div>
+            <button class="pill primary" onclick="window.P.go('rec')">回到记录</button>
+          </div>
+
+          <div id="dataMode">
+            <button class="hero" onclick="window.P.startRide()">
+              <span class="ring">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 17l3-4.5M11 9l3-4.5M6 17a3 3 0 11-6 0 3 3 0 016 0zM15 11l4.5 6M15 11l3 2M12.5 14.5L15 11"/><circle cx="19.5" cy="17" r="2.6"/></svg>
+              </span>
+              <span class="t"><b>开始骑行</b><span>GPS 轨迹 · 支持心率 / 踏频外设</span></span>
+              <svg class="chev" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+            </button>
+
+            <div class="card" onclick="window.P.openStats()" style="cursor:pointer">
+              <div class="seg-period" id="segPeriod" onclick="event.stopPropagation()">
+                <button data-p="today" class="on">今日</button>
+                <button data-p="week">本周</button>
+                <button data-p="month">本月</button>
+              </div>
+              <div class="ov-grid">
+                <div class="ov-item"><div class="v" id="ovDist">3.2</div><div class="k">距离 / km</div></div>
+                <div class="ov-item"><div class="v" id="ovTime">42</div><div class="k">时长 / min</div></div>
+                <div class="ov-item"><div class="v" id="ovElev">186</div><div class="k">爬升 / m</div></div>
+              </div>
+              <div class="ov-delta" id="ovDelta"><span>较上周同期 <b class="up">+12%</b> 距离</span><span>累计骑行 <b>1,256 km</b></span></div>
+            </div>
+
+            <div class="card lastcard" id="lastCard">
+              <div class="mini-map" id="miniMap"></div>
+              <div class="lastmeta">
+                <span class="lab">上次骑行</span>
+                <b id="lastName">晚间骑行</b>
+                <span class="st" id="lastDate">09-06 周二 · 19:42</span>
+                <div class="statline"><span><b id="lastKm">42.3</b> km</span><span><b id="lastH">3:12:45</b></span><span><b id="lastUp">640</b> m ↑</span></div>
+              </div>
+            </div>
+
+            <div class="sec-title"><h3>最近活动</h3><a onclick="window.P.openActivityList()">全部</a></div>
+            <div class="card"><div class="rows" id="recentRows"></div></div>
+          </div>
+
+          <div id="emptyMode" class="none">
+            <button class="hero" onclick="window.P.startRide()">
+              <span class="ring"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 17l3-4.5M11 9l3-4.5M6 17a3 3 0 11-6 0 3 3 0 016 0zM15 11l4.5 6M15 11l3 2M12.5 14.5L15 11"/><circle cx="19.5" cy="17" r="2.6"/></svg></span>
+              <span class="t"><b>开始骑行</b><span>GPS 轨迹 · 支持心率 / 踏频外设</span></span>
+              <svg class="chev" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+            </button>
+            <div class="card empty-card">
+              <div class="em"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+              <h4>还没有骑行记录</h4>
+              <p>完成第一次骑行后，这里会展示你的距离、爬升与最近活动；也可以把码表里积累的 .fit / .gpx 历史导入进来。</p>
+              <div class="btns">
+                <button class="btn pri" onclick="window.P.startRide()">开始你的第一次骑行</button>
+                <button class="btn sec" onclick="window.P.toast('导入历史数据（我的→导入，待真实文件选择器）')">导入历史数据</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 统计二级页 -->
+        <div id="statsView" class="none">
+          <div class="subhead">
+            <button class="backbtn" onclick="window.P.backHome()">‹</button>
+            <h2>统计</h2><span></span>
+          </div>
+          <div class="banner live slim" id="statLive" style="margin-top:2px">
+            <span class="dot"></span>
+            <div class="b-main"><b>骑行进行中 <span id="stLiveTime">00:00</span></b><span id="stLiveDist">0.0 km</span></div>
+            <button class="pill primary" onclick="window.P.go('rec')">回到记录</button>
+          </div>
+          <div class="card">
+            <div class="seg-period" id="segStat">
+              <button data-p="today">今日</button>
+              <button data-p="week" class="on">本周</button>
+              <button data-p="month">本月</button>
+            </div>
+            <div class="grid2">
+              <div class="cell"><b id="stCnt">—</b><span>次数</span></div>
+              <div class="cell"><b id="stDist">—</b><span>距离 km</span></div>
+              <div class="cell"><b id="stDur">—</b><span>时长</span></div>
+              <div class="cell"><b id="stElev">—</b><span>爬升 m</span></div>
+            </div>
+            <div class="ov-delta" id="stDelta"><span>较上周同期 <b class="up">+12%</b></span><span>目标待设（P2）</span></div>
+          </div>
+          <div class="sec-title"><h3>近 7 天</h3></div>
+          <div class="card bars-wrap">
+            <div class="bars" id="weekBars"></div>
+            <div class="bar-axis" id="weekAxis"></div>
+          </div>
+          <div class="sec-title"><h3>周·月趋势</h3><span style="font-size:11px;color:var(--txt3)">距离柱状 + 累积折线</span></div>
+          <div class="card">
+            <div class="seg seg-mini" id="trendSeg" style="margin-bottom:10px">
+              <button data-v="w8" class="on">近 8 周</button>
+              <button data-v="m6">近 6 月</button>
+            </div>
+            <div class="trend-box"><div id="trendChart"></div></div>
+          </div>
+          <div class="sec-title"><h3>日历热力图</h3><span style="font-size:11px;color:var(--txt3)">点击有骑行日查看当天</span></div>
+          <div class="card">
+            <div class="heat-head">
+              <button class="heat-nav" id="heatPrev" onclick="window.P.heatNav(-1)">‹</button>
+              <b id="heatMonth">2026年9月</b>
+              <button class="heat-nav" id="heatNext" onclick="window.P.heatNav(1)">›</button>
+            </div>
+            <div class="heat-wd"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span style="color:var(--acc2)">日</span></div>
+            <div class="heat-grid" id="heatGrid"></div>
+            <div class="heat-info" id="heatInfo"></div>
+          </div>
+          <div class="sec-title"><h3>累计</h3></div>
+          <div class="card pad0">
+            <div class="grid2" style="margin:0;border:0;border-radius:0">
+              <div class="cell"><b id="ctKm">—</b><span>总里程 km</span></div>
+              <div class="cell"><b id="ctDur">—</b><span>总时长</span></div>
+              <div class="cell"><b id="ctElev">—</b><span>总爬升 m</span></div>
+              <div class="cell"><b id="ctCnt">—</b><span>总次数</span></div>
+            </div>
+          </div>
+          <div class="sec-title"><h3>个人纪录</h3></div>
+          <div class="card"><div class="rows" id="prRows"></div></div>
+        </div>
+      </section>
+
+      <!-- ============ PAGE: MAP / ROUTES ============ -->
+      <section id="pageMap" class="none">
+        <div class="map-topbar">
+          <div class="seg seg-map" id="segMap">
+            <button data-m="lite" class="on">标准</button>
+            <button data-m="sat">卫星</button>
+          </div>
+          <button class="locbtn" title="定位到我的位置" onclick="window.P.toast('定位到当前位置（接入真实定位）')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/></svg>
+          </button>
+        </div>
+        <div class="fake-search" onclick="window.P.toast('搜索 / 起终点规划（RT-04，M2）')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+          <span>搜索地点，或规划骑行路线…</span>
+        </div>
+        <div class="map-main" id="mapMain"></div>
+        <div class="sec-title" style="margin-top:14px"><h3>我的路线</h3><a onclick="window.P.toast('新建路线：手绘（M1）/ 自动规划（M2）')">＋ 新建</a></div>
+        <div class="card pad0"><div class="rows" style="padding:6px 14px;border:0"><div id="routeRows"></div></div></div>
+        <div class="map-note">点击路线查看详情并「沿此路线骑行」（RT-06）· 首页缩略图复用本页渲染（RT-01）</div>
+      </section>
+
+      <!-- ============ PAGE: RECORD ============ -->
+      <section id="pageRec" class="none">
+        <div id="recIdle">
+          <div class="rec-prep">
+            <div class="rec-prep-head">
+              <h2>开始新骑行</h2>
+              <span class="rec-gps"><span class="gdot"></span>GPS 已就绪</span>
+            </div>
+            <div class="chiprow" id="typeChips">
+              <button class="chip on" data-t="公路">公路</button>
+              <button class="chip" data-t="山地">山地</button>
+              <button class="chip" data-t="通勤">通勤</button>
+              <button class="chip" data-t="训练">训练</button>
+            </div>
+            <div class="card prefcard">
+              <div class="pref"><div><b>自动暂停</b><span>速度≈0 时自动暂停计时</span></div><button class="sw on" id="swAutoPause"></button></div>
+              <div class="pref"><div><b>自动计圈</b><span>每 5 km 自动记一圈</span></div><button class="sw" id="swAutoLap"></button></div>
+            </div>
+            <button class="rec-big-start" onclick="window.P.startRide()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 17l3-4.5M11 9l3-4.5M6 17a3 3 0 11-6 0 3 3 0 016 0zM15 11l4.5 6M15 11l3 2M12.5 14.5L15 11"/><circle cx="19.5" cy="17" r="2.6"/></svg>
+              开始骑行
+            </button>
+            <p class="rec-note">GPS 轨迹 · 后台锁屏持续记录 · 心率 / 踏频 / 功率外设接入见 M3</p>
+          </div>
+        </div>
+        <div id="recLive" class="none">
+          <div class="rec-top">
+            <div class="rec-topline">
+              <span class="rec-tag" id="recTypeTag">公路</span>
+              <span class="rec-tag" id="recLapTag">L1</span>
+            </div>
+            <div class="rec-timer" id="recTimer">00:00</div>
+            <div class="rec-sub"><span id="recSub"></span></div>
+          </div>
+          <div class="rec-map">
+            <span class="live-tag" id="recLiveTag">● REC 00:00</span>
+            <svg id="recMapSvg" viewBox="0 0 100 60" preserveAspectRatio="xMidYMid slice"></svg>
+          </div>
+          <div class="rec-grid">
+            <div class="cell"><b id="recDist">0.0</b><span>距离 km</span></div>
+            <div class="cell"><b id="recSpd">0.0</b><span>当前 km/h</span></div>
+            <div class="cell"><b id="recAvg">0.0</b><span>均速 km/h</span></div>
+            <div class="cell"><b id="recHr">—</b><span>心率 bpm</span></div>
+            <div class="cell"><b id="recElev">0</b><span>爬升 m</span></div>
+            <div class="cell"><b id="recCal">0</b><span>千卡</span></div>
+          </div>
+          <div class="rec-btns">
+            <button class="rbtn lap" onclick="window.P.lapNow()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v16M5 19h14M9 3v4M13 3v4M17 3v4M5 11h14"/></svg>
+              计圈
+            </button>
+            <button class="rbtn finish" onclick="window.P.finishRide()">
+              <svg viewBox="0 0 24 24"><rect x="4.5" y="4.5" width="15" height="15" rx="3.5" fill="currentColor"/></svg>
+            </button>
+            <button class="rbtn pause-b" id="btnPause" onclick="window.P.togglePause()">
+              <svg viewBox="0 0 24 24" fill="currentColor" id="btnPauseIcon"><rect x="6" y="4" width="4.4" height="16" rx="1.4"/><rect x="13.6" y="4" width="4.4" height="16" rx="1.4"/></svg>
+              <span>暂停</span>
+            </button>
+          </div>
+          <div class="abort-line"><button class="abort-btn" id="abortBtn" onclick="window.P.abortRide()">放弃本次骑行</button></div>
+        </div>
+      </section>
+
+      <!-- ============ PAGE: PROFILE ============ -->
+      <section id="pageMe" class="none">
+        <div class="me-top">
+          <div class="avatar">跋</div>
+          <div><b>本地骑行者</b><span>本地模式 · 无需登录 · V2 再账号化</span></div>
+        </div>
+        <div class="card pad0" style="margin-bottom:4px">
+          <div class="grid2" style="margin:0;border:0;border-radius:0">
+            <div class="cell"><b id="meKm">—</b><span>总里程 km</span></div>
+            <div class="cell"><b id="meDur">—</b><span>总时长</span></div>
+            <div class="cell"><b id="meElev">—</b><span>总爬升 m</span></div>
+            <div class="cell"><b id="meCnt">—</b><span>总次数</span></div>
+          </div>
+        </div>
+        <div class="sec-title" style="margin-top:14px"><h3>功能入口</h3></div>
+        <div class="me-list">
+          <div class="row" onclick="window.P.openStatsFromMe()"><span class="ic">📊</span><span class="m"><b>统计概览</b></span><span class="r" style="color:var(--txt3)">›</span></div>
+          <div class="row" onclick="window.P.openActivityList()"><span class="ic">📋</span><span class="m"><b>全部活动</b></span><span class="r" style="color:var(--txt3)">›</span></div>
+          <div class="row" onclick="window.P.toast('装备档案（待设计）')"><span class="ic">🚲</span><span class="m"><b>我的装备</b></span><span class="r" style="color:var(--txt3)">›</span></div>
+          <div class="row" onclick="window.P.simImport()"><span class="ic">📥</span><span class="m"><b>导入骑行数据</b></span><span class="r" style="color:var(--txt3)">›</span></div>
+          <div class="row" onclick="window.P.toast('导出 .gpx/.fit（IO-05，M2）')"><span class="ic">📤</span><span class="m"><b>导出数据</b></span><span class="r" style="color:var(--txt3)">›</span></div>
+          <div class="row" onclick="window.P.toast('设置（单位/采样/后台权限等，待设计）')"><span class="ic">⚙️</span><span class="m"><b>设置</b></span><span class="r" style="color:var(--txt3)">›</span></div>
+          <div class="row" onclick="window.P.toast('跋涉 v0.1 原型 · 2026-09-07')"><span class="ic">ℹ️</span><span class="m"><b>关于</b></span><span class="r" style="color:var(--txt3)">›</span></div>
+        </div>
+        <div class="ph" style="margin-top:16px"><p style="max-width:250px;font-size:11.5px">装备、导入导出、设置待各自 PRD（已立项：活动/统计/记录/地图均已出 PRD）。</p></div>
+      </section>
+    </div>
+
+    <!-- ============ SUBPAGE: 活动列表 ============ -->
+    <div class="subpage" id="actListPage">
+      <div class="subhead">
+        <button class="backbtn" onclick="window.P.closeSub()">‹</button>
+        <h2>活动</h2>
+        <a style="text-align:right;color:var(--acc2);font-size:13px;cursor:pointer" onclick="window.P.toast('手动补记（AL-08，P1）')">＋手动</a>
+      </div>
+      <div class="sub-scroll">
+        <div class="filter-scroll" id="actFilters">
+          <button class="chip on" data-f="all">全部</button>
+          <button class="chip" data-f="公路">公路</button>
+          <button class="chip" data-f="山地">山地</button>
+          <button class="chip" data-f="通勤">通勤</button>
+          <button class="chip" data-f="训练">训练</button>
+          <button class="chip" data-f="导入">导入</button>
+        </div>
+        <div id="actGroups"></div>
+      </div>
+    </div>
+
+    <!-- ============ SUBPAGE: 活动详情 ============ -->
+    <div class="subpage" id="actDetailPage">
+      <div class="subhead">
+        <button class="backbtn" onclick="window.P.closeDetail()">‹</button>
+        <h2>骑行详情</h2>
+        <a style="text-align:right;color:var(--acc2);font-size:13px;cursor:pointer" onclick="window.P.toast('编辑名称/类型/备注（ACT-05）')">编辑</a>
+      </div>
+      <div class="sub-scroll" id="detailScroll">
+        <div id="dBody"></div>
+      </div>
+    </div>
+
+    <!-- route detail overlay -->
+    <div class="overlay" id="routeOv">
+      <button class="ov-close" onclick="window.P.closeRouteOv()">✕</button>
+      <h2 id="roName">晨骑爬坡线</h2>
+      <div class="ov-sub" id="roSub">我的路线 · 手绘创建</div>
+      <div class="route-big" id="routeBig"></div>
+      <div class="ov-list">
+        <div><span>距离</span><b id="roKm">—</b></div>
+        <div><span>累计爬升</span><b id="roElev">—</b></div>
+        <div><span>预计时长</span><b id="roMin">—</b></div>
+        <div><span>类型</span><b id="roType">—</b></div>
+      </div>
+      <div class="save-btns">
+        <button class="btn pri" onclick="window.P.startRoute()">沿此路线骑行</button>
+        <button class="btn sec" onclick="window.P.toast('编辑路线（RT-05/M2）')">编辑路线</button>
+        <button class="btn sec" style="background:none;border:1px solid var(--line);color:var(--txt3)" onclick="window.P.toast('导出 GPX（MP-14，M2）')">导出 GPX</button>
+      </div>
+    </div>
+
+    <!-- summary overlay -->
+    <div class="overlay" id="summaryOv">
+      <h2>骑行完成 🎉</h2>
+      <div class="ov-sub" id="sumName">晚间骑行 · 09-07</div>
+      <div class="ov-list">
+        <div><span>距离</span><b id="sDist">—</b></div>
+        <div><span>时长</span><b id="sTime">—</b></div>
+        <div><span>均速</span><b id="sSpd">—</b></div>
+        <div><span>累计爬升</span><b id="sElev">—</b></div>
+        <div><span>平均心率</span><b id="sHr">—</b></div>
+        <div><span>计圈</span><b id="sLap">0 圈</b></div>
+      </div>
+      <div class="save-btns">
+        <button class="btn pri" onclick="window.P.saveRide()">保存</button>
+        <button class="btn sec" onclick="window.P.cancelSummary()">再骑一段</button>
+      </div>
+    </div>
+
+    <!-- text-only tab bar -->
+    <div class="tabbar">
+      <button class="tab on" data-tab="home" onclick="window.P.go('home')"><span>首页</span></button>
+      <button class="tab" data-tab="map" onclick="window.P.go('map')"><span>地图</span></button>
+      <button class="tab" data-tab="rec" onclick="window.P.go('rec')"><span>记录</span></button>
+      <button class="tab" data-tab="me" onclick="window.P.go('me')"><span>我的</span></button>
+    </div>
+
+    <div class="toast" id="toast"></div>
+  </div>
+</div>
+
+<script>
+/* ================= helpers ================= */
+const $ = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+const pad = n => String(n).padStart(2,'0');
+function fmtDur(sec){ const h=Math.floor(sec/3600),m=Math.floor(sec%3600/60),s=sec%60;
+  return h>0? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`; }
+function fmtDurShort(min){ if(min===undefined||min<=0) return '—'; return min>=60? (min/60).toFixed(1)+' h' : min+' min'; }
+function fmtHM(min){ const h=Math.floor(min/60),m=Math.round(min%60); return h>0? h+'h '+pad(m)+'m' : m+' min'; }
+const BIKE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 17l3-4.5M11 9l3-4.5M6 17a3 3 0 11-6 0 3 3 0 016 0zM15 11l4.5 6M15 11l3 2M12.5 14.5L15 11"/><circle cx="19.5" cy="17" r="2.6"/></svg>';
+const IMPORT_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>';
+
+/* ================= map artwork ================= */
+function drawMap(container, pts, opts){
+  const o = Object.assign({seed:1, theme:'lite'}, opts||{});
+  const sat = o.theme==='sat';
+  const C = sat ? {
+    base:'#2b2e35', blk:'rgba(255,255,255,.04)', park:'#29422f', water:'#20394d',
+    minor:'#3a3d45', case:'#14161b', road:'#4d5159', halo:'rgba(8,8,12,.45)', route:'#ff6a1a',
+    roadW:4.6, caseW:7, minorW:1.8
+  } : {
+    base:'#e9ebef', blk:'rgba(23,26,32,.05)', park:'#d2e5c8', water:'#c9dff0',
+    minor:'#ffffff', case:'#d2d5db', road:'#ffffff', halo:'#ffffff', route:'#fc4c02',
+    roadW:4.6, caseW:7, minorW:1.8
+  };
+  let out='';
+  out+=`<rect x="0" y="0" width="100" height="60" fill="${C.base}"/>`;
+  const blocks=[[6,5,20,12],[30,4,24,14],[60,6,16,10],[8,22,18,14],[32,24,22,13],[60,22,22,12],[10,40,16,12],[40,40,20,13]];
+  blocks.forEach((b,i)=>{ if((i+o.seed)%2===0) out+=`<rect x="${b[0]}" y="${b[1]}" width="${b[2]}" height="${b[3]}" fill="${C.blk}"/>`; });
+  out+=`<ellipse cx="86" cy="14" rx="9" ry="6" fill="${C.park}"/>`;
+  out+=`<path d="M-2 54 C 20 46, 40 60, 60 52 S 92 44 104 54 L 104 62 L -2 62 Z" fill="${C.water}"/>`;
+  for(let i=8;i<96;i+=12) out+=`<line x1="${i}" y1="2" x2="${i+3}" y2="58" stroke="${C.minor}" stroke-width="${C.minorW}"/>`;
+  for(let j=8;j<56;j+=10) out+=`<line x1="2" y1="${j}" x2="98" y2="${j+2}" stroke="${C.minor}" stroke-width="${C.minorW}"/>`;
+  out+=`<path d="M-2 20 C 25 16, 45 26, 70 20 S 100 12 104 14" fill="none" stroke="${C.case}" stroke-width="${C.caseW}" stroke-linecap="round"/>`;
+  out+=`<path d="M-2 20 C 25 16, 45 26, 70 20 S 100 12 104 14" fill="none" stroke="${C.road}" stroke-width="${C.roadW}" stroke-linecap="round"/>`;
+  out+=`<path d="M20 -2 C 24 15, 16 35, 26 56" fill="none" stroke="${C.case}" stroke-width="${C.caseW-0.5}" stroke-linecap="round"/>`;
+  out+=`<path d="M20 -2 C 24 15, 16 35, 26 56" fill="none" stroke="${C.road}" stroke-width="${C.roadW-0.2}" stroke-linecap="round"/>`;
+  if(pts && pts.length>1){
+    const d = pts.map((p,i)=> (i?'L':'M')+p[0]+' '+p[1]).join(' ');
+    out+=`<path d="${d}" fill="none" stroke="${C.halo}" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" opacity=".9"/>`;
+    out+=`<path d="${d}" fill="none" stroke="${C.route}" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>`;
+  }
+  const isSvgEl = container.tagName.toLowerCase()==='svg';
+  container.innerHTML = isSvgEl ? out : '<svg viewBox="0 0 100 60" preserveAspectRatio="xMidYMid slice">'+out+'</svg>';
+}
+function addPins(container, pts){
+  const svg = container.tagName.toLowerCase()==='svg'? container : container.querySelector('svg');
+  if(!svg || !pts || pts.length<2) return;
+  const s=pts[0], e=pts[pts.length-1];
+  svg.insertAdjacentHTML('beforeend',
+    `<circle cx="${s[0]}" cy="${s[1]}" r="3.6" fill="#ffffff" stroke="#fc4c02" stroke-width="2.2"/>`+
+    `<circle cx="${e[0]}" cy="${e[1]}" r="3.6" fill="#fc4c02" stroke="#ffffff" stroke-width="1.8"/>`);
+}
+function routePts(seed){
+  const sets=[
+    [[12,40],[22,36],[34,32],[46,28],[58,26],[70,24],[82,26],[90,30]],
+    [[14,18],[26,22],[38,26],[52,24],[66,20],[80,16],[94,16]],
+    [[8,44],[20,40],[32,34],[44,24],[56,18],[68,16],[80,20],[92,26]]
+  ];
+  return sets[seed % sets.length];
+}
+
+/* ================= state ================= */
+const now = new Date();
+const daysAgo = n => { const d=new Date(now); d.setDate(d.getDate()-n); return d; };
+function seedRide(name, d, km, min, elev, src, type){
+  return {id:Math.random().toString(36).slice(2,9), name, d, km, min, elev,
+    src:src||'手机', type:type||(name.indexOf('通勤')>=0?'通勤':'公路')};
+}
+const state = {
+  mode:'data', page:'home', sub:null, period:'today', statPeriod:'week',
+  pre:{type:'公路', autoPause:true, autoLap:false},
+  rides: [
+    seedRide('晨骑', daysAgo(1), 42.3, 193, 640),
+    seedRide('通勤', daysAgo(2), 12.1, 38, 40, '导入','通勤'),
+    seedRide('午间骑行', daysAgo(3), 28.7, 95, 212),
+    seedRide('晚间骑行', daysAgo(5), 3.2, 42, 186),
+    seedRide('晨骑', daysAgo(6), 6.8, 40, 90),
+    seedRide('长途', daysAgo(18), 96.0, 390, 1180),
+  ],
+  routes: [
+    {id:'r1', name:'晨骑爬坡线', km:32.4, elev:860, min:118, type:'手绘', pts:0, sub:'09-06 骑行转存'},
+    {id:'r2', name:'环湖休闲线', km:18.6, elev:96,  min:55,  type:'自动规划', pts:1, sub:'规划于 09-02'},
+    {id:'r3', name:'通勤快捷线', km:12.1, elev:40,  min:34,  type:'手绘', pts:2, sub:'常走通勤路'},
+  ],
+  session:null,
+  actFilter:'all',
+};
+let mapTheme='lite';
+let currentRoute=null;
+let currentDetail=null;
+let abortArmed=false, abortTimer=null;
+let delArmed=false, delTimer=null;
+
+/* ================= aggregates ================= */
+function periodStart(p){
+  const d = new Date(now); d.setHours(0,0,0,0);
+  if(p==='today') return d;
+  if(p==='week'){ const day=(d.getDay()+6)%7; d.setDate(d.getDate()-day); return d; }
+  d.setDate(1); return d;
+}
+function periodLen(p){ return p==='today'?1:(p==='week'?7:30); }
+function sumIn(start){
+  const list = state.rides.filter(r=>r.d>=start && r.d<=now);
+  return {cnt:list.length, km:list.reduce((s,r)=>s+r.km,0), min:list.reduce((s,r)=>s+r.min,0), ele:list.reduce((s,r)=>s+r.elev,0)};
+}
+function fmtDelta(v){ return v>=0?`+${v}%`:`${v}%`; }
+
+/* ================= overview (home) ================= */
+function renderOverview(){
+  const start = periodStart(state.period);
+  const s = sumIn(start);
+  $('#ovDist').textContent = s.km>0? s.km.toFixed(1) : '—';
+  $('#ovTime').textContent = s.min>0? s.min : '—';
+  $('#ovElev').textContent = s.ele>0? s.ele : '—';
+  const pStart = new Date(start); pStart.setDate(pStart.getDate()-periodLen(state.period));
+  const prev = state.rides.filter(r=>r.d>=pStart && r.d<start).reduce((x,r)=>x+r.km,0);
+  const diff = prev>0? Math.round((s.km-prev)/prev*100): (s.km>0?100:0);
+  const allKm = state.rides.reduce((x,r)=>x+r.km,0);
+  $('#ovDelta').innerHTML = `<span>较上${state.period==='today'?'日':state.period==='week'?'周':'月'}同期 <b class="${diff>=0?'up':'down'}">${fmtDelta(diff)}</b> 距离</span><span>累计骑行 <b>${allKm.toFixed(0)} km</b></span>`;
+}
+function rideRowHTML(r, tagline){
+  const dat = (r.d.getMonth()+1)+'月'+r.d.getDate()+'日';
+  return `<div class="row" onclick="window.P.openDetail('${r.id}')">
+      <span class="ic ${r.src==='导入'?'imp':''}">${r.src==='导入'?IMPORT_ICON:BIKE_ICON}</span>
+      <span class="m"><b>${r.name}${r.src==='导入'?'<span class="tag">导入</span>':''}</b><span>${dat} · ${r.km.toFixed(1)} km · 爬升 ${r.elev} m</span></span>
+      <span class="r"><b>${fmtDur(r.min*60)}</b><span>${(r.km/r.min*60).toFixed(1)} km/h</span></span>
+    </div>`;
+}
+function renderRecent(){
+  const rows = state.rides.slice().sort((a,b)=>b.d-a.d).slice(0,3);
+  $('#recentRows').innerHTML = rows.map(rideRowHTML).join('');
+}
+function renderLast(){
+  const last = state.rides.slice().sort((a,b)=>b.d-a.d)[0];
+  if(!last){ $('#lastCard').classList.add('none'); return; }
+  $('#lastCard').classList.remove('none');
+  $('#lastCard').onclick = ()=>openDetail(last.id);
+  const d = last.d;
+  $('#lastName').textContent = last.name;
+  $('#lastDate').textContent = (d.getMonth()+1)+'-'+pad(d.getDate())+' · 19:42';
+  $('#lastKm').textContent = last.km.toFixed(1);
+  $('#lastH').textContent = fmtDur(last.min*60);
+  $('#lastUp').textContent = last.elev;
+  drawMap($('#miniMap'), routePts(last.km>30?0:2));
+}
+function renderHomeAll(){ renderOverview(); renderRecent(); renderLast(); }
+
+/* ================= stats page ================= */
+function openStats(preset){
+  if(preset) state.statPeriod = preset;
+  state.sub='stats';
+  $('#homeMain').classList.add('none');
+  $('#statsView').classList.remove('none');
+  $('#sbPage').textContent='跋涉 · 统计';
+  renderStats();
+  renderBanner();
+}
+function openStatsFromMe(){ go('home'); openStats('week'); }
+function backHome(){
+  state.sub=null;
+  $('#statsView').classList.add('none');
+  $('#homeMain').classList.remove('none');
+  $('#sbPage').textContent = PAGE_TAG.home;
+  renderHomeAll(); renderBanner();
+}
+function renderStats(){
+  const p = state.statPeriod;
+  const start = periodStart(p);
+  const s = sumIn(start);
+  $('#stCnt').textContent = s.cnt;
+  $('#stDist').textContent = s.km>0? s.km.toFixed(1) : '—';
+  $('#stDur').textContent = fmtDurShort(s.min);
+  $('#stElev').textContent = s.ele>0? Math.round(s.ele) : '—';
+  const pStart = new Date(start); pStart.setDate(pStart.getDate()-periodLen(p));
+  const prev = state.rides.filter(r=>r.d>=pStart && r.d<start).reduce((x,r)=>x+r.km,0);
+  const diff = prev>0? Math.round((s.km-prev)/prev*100): (s.cnt>0?100:0);
+  $('#stDelta').innerHTML = `<span>较上${p==='today'?'日':p==='week'?'周':'月'}同期 <b class="${diff>=0?'up':'down'}">${fmtDelta(diff)}</b> 距离</span><span>目标功能待设（P2）</span>`;
+  const days=[], wd=['日','一','二','三','四','五','六'];
+  for(let i=6;i>=0;i--){ const d=daysAgo(i); days.push({label:'周'+wd[d.getDay()], km:0, today:i===0, d}); }
+  state.rides.forEach(r=>{
+    const hit = days.find(x=>x.d.getFullYear()===r.d.getFullYear()&&x.d.getMonth()===r.d.getMonth()&&x.d.getDate()===r.d.getDate());
+    if(hit) hit.km += r.km;
+  });
+  const max = Math.max(1, ...days.map(x=>x.km));
+  $('#weekBars').innerHTML = days.map(x=>{
+    const h = x.km>0? Math.max(8, Math.round(x.km/max*100)) : 2;
+    return `<div class="bar"><i style="height:${h}%" class="${x.km>0?'':'zero'}"></i></div>`;
+  }).join('');
+  $('#weekAxis').innerHTML = days.map(x=>`<span class="${x.today?'today':''}">${x.label}</span>`).join('');
+  const tot = {km:0,min:0,ele:0,cnt:state.rides.length};
+  state.rides.forEach(r=>{ tot.km+=r.km; tot.min+=r.min; tot.ele+=r.elev; });
+  $('#ctKm').textContent = tot.km.toFixed(1);
+  $('#ctDur').textContent = fmtDurShort(tot.min);
+  $('#ctElev').textContent = Math.round(tot.ele);
+  $('#ctCnt').textContent = tot.cnt;
+  const pr = [];
+  const far = state.rides.reduce((a,b)=> b.km>a.km? b:a, state.rides[0]||{km:0});
+  const long = state.rides.reduce((a,b)=> b.min>a.min? b:a, state.rides[0]||{min:0});
+  const climb = state.rides.reduce((a,b)=> b.elev>a.elev? b:a, state.rides[0]||{elev:0});
+  let fastest=null;
+  state.rides.forEach(r=>{ if(r.min>0){ const sp=r.km/(r.min/60); if(!fastest||sp>fastest.sp) fastest={sp,nm:r.name,id:r.id}; } });
+  pr.push(['最远单次', far.km? far.km.toFixed(1)+' km':'—', far.id]);
+  pr.push(['单次最长', long.min? fmtDurShort(long.min):'—', long.id]);
+  pr.push(['最大爬升', climb.elev? Math.round(climb.elev)+' m':'—', climb.id]);
+  pr.push(['最快均速', fastest? fastest.sp.toFixed(1)+' km/h':'—', fastest?fastest.id:null]);
+  // 最快 10/50/100 km：演示按均速外推（正式实现按轨迹滚动窗口切片）
+  [10,50,100].forEach(th=>{
+    let best=null;
+    state.rides.forEach(r=>{ if(r.km>=th && r.min>0){ const sp=r.km/(r.min/60); if(!best||sp>best.sp) best={sp,id:r.id}; } });
+    pr.push([`最快 ${th} km`, best? fmtDur(th/best.sp*3600) : '—（距离不足）', best?best.id:null]);
+  });
+  $('#prRows').innerHTML = pr.map(x=>`<div class="row" ${x[2]?`onclick="window.P.openDetail('${x[2]}')"`:''} style="${x[2]?'':'cursor:default'}"><span class="m"><b>${x[0]}</b></span><span class="r"><b>${x[1]}</b></span></div>`).join('');
+  renderTrend();
+  renderHeat();
+}
+function syncStatLive(){
+  const s = state.session;
+  const live = s && s.on;
+  if(state.sub==='stats'){
+    $('#statLive').style.display = live?'flex':'none';
+    if(live){ $('#stLiveTime').textContent = fmtDur(s.sec); $('#stLiveDist').textContent = s.dist.toFixed(1)+' km'; }
+  }
+}
+
+/* ================= stats: trend & heatmap (P0) ================= */
+let trendKind='w8';
+let heatY=now.getFullYear(), heatM=now.getMonth();
+function startOfWeek(d){ const x=new Date(d); x.setHours(0,0,0,0); const w=(x.getDay()+6)%7; x.setDate(x.getDate()-w); return x; }
+function renderTrend(){
+  const box = $('#trendChart');
+  if(trendKind==='w8'){
+    const buckets=[];
+    for(let i=7;i>=0;i--){
+      const st=new Date(now); st.setDate(st.getDate()-i*7); st=startOfWeek(st);
+      const en=new Date(st); en.setDate(en.getDate()+7);
+      const km=state.rides.filter(r=>r.d>=st&&r.d<en).reduce((s,r)=>s+r.km,0);
+      buckets.push({label:(st.getMonth()+1)+'/'+st.getDate(), km, cum:0});
+    }
+    renderTrendChart(buckets, true);
+  } else {
+    const buckets=[];
+    for(let i=5;i>=0;i--){
+      const d=new Date(now.getFullYear(), now.getMonth()-i, 1);
+      const km=state.rides.filter(r=>r.d.getFullYear()===d.getFullYear()&&r.d.getMonth()===d.getMonth()).reduce((s,r)=>s+r.km,0);
+      buckets.push({label:(d.getMonth()+1)+'月', km, cum:0});
+    }
+    renderTrendChart(buckets, false);
+  }
+}
+function renderTrendChart(buckets, isWeek){
+  let cum=0;
+  buckets.forEach(b=>{ cum+=b.km; b.cum=cum; });
+  const maxKm=Math.max(0.001, ...buckets.map(b=>b.km));
+  const maxCum=Math.max(0.001, cum);
+  const W=300,H=118,bottom=24, top=6;
+  const n=buckets.length, colW=W/n;
+  const yKm=v=> bottom+ (H-bottom-top) - v/maxKm*(H-bottom-top-30);
+  const yCum=v=> bottom+6 + (H-bottom-top-24) - v/maxCum*(H-bottom-top-30);
+  let bars='', cumPts='';
+  buckets.forEach((b,i)=>{
+    const x=i*colW+colW/2, bw=colW*0.52;
+    const h=(H-bottom-top-30)*b.km/maxKm;
+    bars+=`<rect x="${x-bw/2}" y="${yKm(b.km)}" width="${bw}" height="${Math.max(2,h)}" rx="3" fill="#fc4c02" opacity="${b.km>0?0.92:0.18}"/>`;
+    cumPts+=(i?'L':'M')+x.toFixed(1)+' '+yCum(b.cum).toFixed(1)+' ';
+  });
+  let grid='';
+  for(let g=0;g<=2;g++){ const gy=bottom+6+g*((H-bottom-top-24)/2); grid+=`<line x1="0" y1="${gy.toFixed(0)}" x2="${W}" y2="${gy.toFixed(0)}" stroke="rgba(17,17,21,.05)"/>`; }
+  const labels = buckets.map((b,i)=>`<text x="${(i*colW+colW/2).toFixed(0)}" y="${H-6}" font-size="8.5" text-anchor="middle" fill="#9898a3">${b.label}</text>`).join('');
+  $('#trendChart').innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+    ${grid}
+    ${bars}
+    <path d="${cumPts.trim()}" fill="none" stroke="#4a8fe7" stroke-width="1.8" stroke-linejoin="round"/>
+    ${labels}
+  </svg>`;
+}
+function dayKey(d){ return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate(); }
+function renderHeat(){
+  $('#heatMonth').textContent = heatY+'年'+(heatM+1)+'月';
+  const first = new Date(heatY, heatM, 1);
+  const lead = (first.getDay()+6)%7;                 // 周一为第一列
+  const dim = new Date(heatY, heatM+1, 0).getDate();
+  // 该月按日聚合
+  const map={};
+  state.rides.forEach(r=>{ if(r.d.getFullYear()===heatY&&r.d.getMonth()===heatM){ const k=r.d.getDate(); map[k]=(map[k]||0)+r.km; } });
+  const keys=Object.keys(map).map(Number);
+  const maxKm=Math.max(0.001, ...keys.map(k=>map[k]));
+  const today=new Date(); const isThisMonth = today.getFullYear()===heatY&&today.getMonth()===heatM;
+  let cells='';
+  for(let i=0;i<lead;i++) cells+='<div class="hcell empty"></div>';
+  for(let d=1; d<=dim; d++){
+    let cls='hcell';
+    if(isThisMonth&&today.getDate()===d) cls+=' today';
+    if(map[d]){
+      const lv = map[d]/maxKm;
+      cls+= lv<0.25?' lv1': lv<0.5?' lv2': lv<0.75?' lv3':' lv4';
+    }
+    cells+=`<div class="${cls}" onclick="window.P.heatDay(${d})">${d}</div>`;
+  }
+  const trail=42-(lead+dim);
+  for(let i=0;i<trail%7;i++) cells+='<div class="hcell empty"></div>';
+  $('#heatGrid').innerHTML=cells;
+  const tkm=keys.reduce((s,k)=>s+map[k],0);
+  $('#heatInfo').innerHTML = keys.length
+    ? `骑行 ${keys.length} 天 · ${tkm.toFixed(1)} km · 点击某日查看当天`
+    : '本月还没有骑行';
+}
+function heatNav(dir){
+  let m=heatM+dir, y=heatY;
+  if(m<0){m=11;y--;} if(m>11){m=0;y++;}
+  heatM=m; heatY=y; renderHeat();
+}
+function heatDay(d){
+  const km=state.rides.filter(r=>r.d.getFullYear()===heatY&&r.d.getMonth()===heatM&&r.d.getDate()===d).reduce((s,r)=>s+r.km,0);
+  toast(km>0? `${heatY}年${heatM+1}月${d}日 · ${km.toFixed(1)} km` : `${heatY}年${heatM+1}月${d}日 · 无骑行`);
+}
+
+/* ================= activity list subpage ================= */
+function openActivityList(){
+  if(state.page!=='home') go('home');
+  state.sub='list';
+  $('#homeMain').classList.add('none');
+  $('#statsView').classList.add('none');
+  $('#sbPage').textContent='跋涉 · 活动';
+  $('#actListPage').classList.add('show');
+  renderActList();
+}
+function setActFilter(f){
+  state.actFilter = f;
+  $$('#actFilters .chip').forEach(c=>c.classList.toggle('on', c.dataset.f===f));
+  renderActList();
+}
+function renderActList(){
+  const f = state.actFilter;
+  let list = state.rides.slice().sort((a,b)=>b.d-a.d);
+  if(f==='导入') list = list.filter(r=>r.src==='导入');
+  else if(f!=='all') list = list.filter(r=>r.type===f || (r.name.indexOf(f)>=0));
+  const box = $('#actGroups');
+  if(!list.length){
+    box.innerHTML = `<div class="act-list-empty">没有符合条件的活动<br>（可先骑行或导入 .fit/.gpx）</div>`;
+    return;
+  }
+  const groups = [];
+  list.forEach(r=>{
+    const key = (r.d.getFullYear())+'年'+(r.d.getMonth()+1)+'月';
+    const g = groups.find(x=>x.key===key);
+    if(g) g.items.push(r); else groups.push({key, items:[r]});
+  });
+  box.innerHTML = groups.map(g=>`
+    <div class="month-group">
+      <div class="mg-head"><span>${g.key}</span><span>${g.items.length} 次</span></div>
+      <div class="rows">${g.items.map(rideRowHTML).join('')}</div>
+    </div>`).join('');
+}
+
+/* ================= activity detail subpage ================= */
+function openDetail(id, fromRecord){
+  const r = state.rides.find(x=>x.id===id);
+  if(!r){ toast('该活动不存在'); return; }
+  currentDetail = r;
+  if(state.page!=='home') go('home');
+  // 关掉可能在上的其它子页
+  $('#homeMain').classList.add('none');
+  $('#statsView').classList.add('none');
+  $('#actListPage').classList.remove('show');
+  $('#sbPage').textContent='跋涉 · 骑行详情';
+  $('#actDetailPage').classList.add('show');
+  delArmed=false;
+  renderDetail();
+  if(fromRecord) toast('刷新了个人纪录 🎉');
+}
+function closeDetail(){
+  $('#actDetailPage').classList.remove('show');
+  currentDetail=null;
+  go('home');
+  if(state.sub) state.sub=null;
+  renderHomeAll(); renderMe();
+}
+function closeSub(){ // 从活动列表返回
+  $('#actListPage').classList.remove('show');
+  go('home');
+  renderHomeAll();
+}
+function renderDetail(){
+  const r = currentDetail; if(!r) return;
+  const avg = r.km/(r.min/60);
+  const maxSpd = (avg*1.32).toFixed(1);
+  const hrAvg = r.km>40? 152 : (r.km>15? 148 : 138);
+  const hrMax = Math.round(hrAvg*1.19);
+  const kcal = Math.round(r.km*24 + r.elev*0.08);
+  const down = Math.round(r.elev*0.9);
+  const dat = r.d.getFullYear()+'年'+(r.d.getMonth()+1)+'月'+r.d.getDate()+'日';
+  const laps = Math.max(1, Math.ceil(r.km/5));
+  const pts = routePts(r.km>30?0:(r.km>15?1:2));
+  let lapRows='';
+  for(let i=1;i<=laps;i++){
+    const kmStart=(i-1)*5, kmEnd=Math.min(i*5, r.km);
+    const segKm = kmEnd-kmStart;
+    const segMin = segKm/(avg||20)*60;
+    const segEl = Math.round(r.elev*segKm/r.km);
+    lapRows+=`<div class="row" style="cursor:default"><span class="m"><b>L${i}</b><span>${kmStart.toFixed(1)}–${kmEnd.toFixed(1)} km</span></span><span class="r"><b>${fmtDur(segMin*60)}</b><span>${segKm.toFixed(1)} km · ↑${segEl}m</span></span></div>`;
+  }
+  $('#dBody').innerHTML = `
+    <div class="detail-title">${r.name}<span class="tag">${r.type||'骑行'}</span></div>
+    <div class="detail-sub">${dat} · ${r.src==='导入'?'导入 · 文件导入':r.src==='手机'?'手机记录':'本地记录'}</div>
+
+    <div class="card pad0">
+      <div class="grid2" style="margin:0;border:0;border-radius:0">
+        <div class="cell"><b>${r.km.toFixed(1)}</b><span>距离 km</span></div>
+        <div class="cell"><b>${fmtDur(r.min*60)}</b><span>时长</span></div>
+        <div class="cell"><b>${avg.toFixed(1)}</b><span>均速 km/h</span></div>
+        <div class="cell"><b>${maxSpd}</b><span>最大速度</span></div>
+      </div>
+    </div>
+    <div class="statline" style="margin:10px 2px 2px;gap:14px"><span>最大速度 <b>${maxSpd}</b></span><span>爬升 <b>${r.elev} m</b></span><span>下降 <b>${down} m</b></span></div>
+    <div class="statline" style="margin:2px 2px 10px;gap:14px"><span>心率 <b>${hrAvg}</b>/${hrMax}</span><span>千卡 <b>${kcal}</b></span>${r.src==='导入'?'<span class="tag">无心率/功率原始数据</span>':''}</div>
+
+    <div class="sec-title"><h3>路线</h3><span style="font-size:11px;color:var(--txt3)">点击全屏（演示）</span></div>
+    <div class="route-big" id="adMap" onclick="window.P.toast('全屏地图（复用轨迹渲染，AD-03）')" style="height:170px"></div>
+
+    <div class="sec-title"><h3>海拔 / 速度</h3><a onclick="window.P.toast('曲线拖动取点：实现期接入（AD-04）')">时间轴｜距离轴</a></div>
+    <div class="card curve-box">
+      <div id="adCurve"></div>
+      <div class="legend"><span><i style="background:#fc4c02"></i>海拔</span><span><i style="background:#4a8fe7"></i>速度</span><span style="color:var(--txt3)">拖动查看数值（M1）</span></div>
+    </div>
+
+    <div class="sec-title"><h3>分段 / 计圈</h3><span style="font-size:11px;color:var(--txt3)">${laps} 圈 · 每 5km</span></div>
+    <div class="card"><div class="rows">${lapRows}</div></div>
+
+    <div class="op-grid">
+      <button class="btn pri" onclick="window.P.toast('保存为路线（MP-13，M2）')">🚴 保存为路线</button>
+      <button class="btn sec" onclick="window.P.toast('导出 GPX（IO-05，M2）')">📤 导出 GPX</button>
+    </div>
+    <div class="abort-line" style="margin-top:6px"><button class="abort-btn" id="delBtn" onclick="window.P.deleteRide()">删除该活动</button></div>`;
+  drawMap($('#adMap'), pts);
+  addPins($('#adMap'), pts);
+  drawCurve(r);
+}
+function drawCurve(r){
+  const avg = r.km/(r.min/60);
+  const n = Math.min(40, Math.max(12, Math.round(r.km*1.6)));
+  const el0 = Math.max(10, r.elev/3);
+  const elMax = el0 + Math.max(40, r.elev);
+  const spdMax = Math.max(30, avg*1.25);
+  let altP='', spdP='', elPts=[], spPts=[];
+  for(let i=0;i<=n;i++){
+    const x = i/n*100;
+    const wave = Math.sin(i*0.55)*Math.sin(i*0.23);
+    const el = el0 + (r.elev)*(0.5+0.5*Math.sin((i/n)*Math.PI)) + wave*12;
+    elPts.push([x, el]);
+    const sp = avg + Math.sin(i*0.8)*avg*0.22 + (i%7===0? 8 : 0);
+    spPts.push([x, sp]);
+  }
+  const yOf = (v,min,max)=> 92 - (v-min)/(max-min)*76;
+  altP = elPts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+yOf(p[1],el0,elMax).toFixed(1)).join(' ');
+  spdP = spPts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+yOf(p[1],avg*0.5,spdMax).toFixed(1)).join(' ');
+  $('#adCurve').innerHTML = `<svg viewBox="0 0 100 100" preserveAspectRatio="none">
+    <line x1="0" y1="50" x2="100" y2="50" stroke="rgba(17,17,21,.05)"/>
+    <line x1="33" y1="8" x2="33" y2="96" stroke="rgba(17,17,21,.05)"/>
+    <line x1="66" y1="8" x2="66" y2="96" stroke="rgba(17,17,21,.05)"/>
+    <path d="${spdP}" fill="none" stroke="#4a8fe7" stroke-width="1.6" stroke-linejoin="round" opacity=".9"/>
+    <path d="${altP}" fill="none" stroke="#fc4c02" stroke-width="2" stroke-linejoin="round"/>
+  </svg>`;
+}
+function deleteRide(){
+  const r=currentDetail; if(!r) return;
+  const b=$('#delBtn');
+  if(!delArmed){
+    delArmed=true; b.classList.add('armed'); b.textContent='再点一次确认删除（不可恢复）';
+    clearTimeout(delTimer);
+    delTimer=setTimeout(()=>{ delArmed=false; b.classList.remove('armed'); b.textContent='删除该活动'; },3000);
+    return;
+  }
+  delArmed=false;
+  state.rides = state.rides.filter(x=>x.id!==r.id);
+  currentDetail=null;
+  closeDetail();
+  toast('活动已删除');
+  renderHomeAll(); renderMe();
+  if(state.sub==='list') renderActList();
+}
+
+/* ================= map page ================= */
+function renderMapMain(){
+  const pts = routePts(0);
+  drawMap($('#mapMain'), pts, {theme:mapTheme});
+  addPins($('#mapMain'), pts);
+}
+function renderRoutes(){
+  $('#routeRows').innerHTML = state.routes.map(r=>`
+    <div class="row" onclick="window.P.openRoute('${r.id}')">
+      <span class="routemap" id="rm_${r.id}"></span>
+      <span class="m"><b>${r.name}</b><span>${r.km.toFixed(1)} km · 爬升 ${r.elev} m · ${r.type}</span></span>
+      <span class="r"><span style="color:var(--txt3);font-size:16px">›</span></span>
+    </div>`).join('');
+  state.routes.forEach(r=> drawMap($('#rm_'+r.id), routePts(r.pts), {theme:mapTheme}));
+}
+function openRoute(id){
+  const r = state.routes.find(x=>x.id===id); if(!r) return;
+  currentRoute = r;
+  $('#roName').textContent = r.name;
+  $('#roSub').textContent = '我的路线 · '+r.type+(r.sub?(' · '+r.sub):'');
+  $('#roKm').textContent = r.km.toFixed(1)+' km';
+  $('#roElev').textContent = r.elev+' m';
+  $('#roMin').textContent = '约 '+fmtDur(r.min*60);
+  $('#roType').textContent = r.type;
+  drawMap($('#routeBig'), routePts(r.pts), {theme:mapTheme});
+  addPins($('#routeBig'), routePts(r.pts));
+  $('#routeOv').classList.add('show');
+}
+function closeRouteOv(){ $('#routeOv').classList.remove('show'); currentRoute=null; }
+function startRoute(){
+  const name = currentRoute? currentRoute.name : '我的路线';
+  if(state.session && state.session.on){ toast('请先结束当前骑行'); go('rec'); return; }
+  startRide();
+  toast('已沿「'+name+'」开始 · 逐段导航待 M2');
+}
+
+/* ================= home mode ================= */
+function applyMode(m){
+  state.mode = m;
+  if(m!=='data') backHome();
+  $('#dataMode').classList.toggle('none', m!=='data');
+  $('#emptyMode').classList.toggle('none', m!=='empty');
+  $('#draftBanner').style.display = m==='draft'?'flex':'none';
+  $$('#segState button').forEach(b=>b.classList.toggle('on', b.dataset.v===m));
+}
+function renderBanner(){
+  const s = state.session;
+  const live = s && s.on;
+  $('#liveBanner').style.display = live?'flex':'none';
+  if(live){ $('#lbTime').textContent = fmtDur(s.sec); $('#lbDist').textContent = s.dist.toFixed(1)+' km'; }
+  syncStatLive();
+}
+
+/* ================= tabs ================= */
+const PAGES = {home:'pageHome', map:'pageMap', rec:'pageRec', me:'pageMe'};
+const PAGE_TAG = {home:'跋涉 · 首页', map:'跋涉 · 地图·路线', rec:'跋涉 · 记录', me:'跋涉 · 我的'};
+function go(page){
+  // 关闭所有弹层/子页
+  ['actListPage','actDetailPage'].forEach(id=> $('#'+id).classList.remove('show'));
+  state.sub = null;
+  state.page = page;
+  Object.keys(PAGES).forEach(k=> $('#'+PAGES[k]).classList.toggle('none', k!==page));
+  $$('.tab').forEach(t=> t.classList.toggle('on', t.dataset.tab===page));
+  $('#sbPage').textContent = PAGE_TAG[page];
+  if(page==='rec') renderRecPage();
+  if(page==='home'){ $('#homeMain').classList.remove('none'); $('#statsView').classList.add('none'); renderHomeAll(); renderBanner(); }
+  if(page==='map'){ renderMapMain(); renderRoutes(); }
+  if(page==='me'){ renderMe(); }
+  $('#screen').scrollTop = 0;
+}
+
+/* ================= me page ================= */
+function renderMe(){
+  let km=0,min=0,ele=0;
+  state.rides.forEach(r=>{ km+=r.km; min+=r.min; ele+=r.elev; });
+  $('#meKm').textContent = km.toFixed(1);
+  $('#meDur').textContent = fmtDurShort(min);
+  $('#meElev').textContent = Math.round(ele);
+  $('#meCnt').textContent = state.rides.length;
+}
+function simImport(){
+  state.rides.push(seedRide('导入·环城', daysAgo(4), 55.0, 210, 460, '导入','公路'));
+  state.rides.push(seedRide('导入·通勤', daysAgo(8), 9.6, 32, 30, '导入','通勤'));
+  renderMe();
+  renderHomeAll();
+  if(state.sub==='list') renderActList();
+  toast('已模拟导入 2 条 .fit（正式版走文件选择器，IO-01）');
+}
+
+/* ================= session engine ================= */
+function startRide(){
+  if(state.session && state.session.on){ toast('请先结束当前骑行'); go('rec'); return; }
+  const p = state.pre;
+  const s = {
+    on:true, type:p.type, paused:false,
+    t0:Date.now(), sec:0, dist:0, spd:0, hr:152, elev:0,
+    laps:0, lapBase:0,
+    pts:routePts(1),
+  };
+  state.session = s;
+  if(state.mode==='empty') applyMode('data');
+  go('rec');
+  toast('开始记录 · GPS 定位中…');
+  renderBanner();
+}
+function renderRecPage(){
+  const s = state.session;
+  const live = s && s.on;
+  $('#recIdle').classList.toggle('none', live);
+  $('#recLive').classList.toggle('none', !live);
+  if(!live){
+    $('#swAutoPause').classList.toggle('on', state.pre.autoPause);
+    $('#swAutoLap').classList.toggle('on', state.pre.autoLap);
+    $$('#typeChips .chip').forEach(c=>c.classList.toggle('on', c.dataset.t===state.pre.type));
+  } else {
+    syncRecUI();
+  }
+}
+function syncRecUI(){
+  const s = state.session;
+  const hrs = s.sec/3600;
+  $('#recTypeTag').textContent = s.type;
+  $('#recLapTag').textContent = 'L'+(s.laps+1)+(s.paused?' · 已暂停':'');
+  $('#recLapTag').classList.toggle('paused', s.paused);
+  $('#recTimer').textContent = fmtDur(s.sec);
+  $('#recLiveTag').textContent = s.paused? 'Ⅱ 已暂停 · '+fmtDur(s.sec) : '● REC '+fmtDur(s.sec);
+  $('#recSub').textContent = s.paused? '已暂停 · 点击继续后恢复计时' : '记录中，切走不中断'+(state.pre.autoPause?' · 自动暂停已开启':'');
+  $('#recDist').textContent = s.dist.toFixed(1);
+  $('#recSpd').textContent = s.spd.toFixed(1);
+  $('#recAvg').textContent = (s.dist>0 && hrs>0)? (s.dist/hrs).toFixed(1) : '0.0';
+  $('#recHr').textContent = Math.round(s.hr);
+  $('#recElev').textContent = Math.round(s.elev);
+  $('#recCal').textContent = Math.round(s.dist*24 + s.elev*0.08);
+  const svg = $('#recMapSvg');
+  const seg = Math.min(1, s.dist/26);
+  const n = Math.max(2, Math.round(s.pts.length*seg));
+  drawMap(svg, s.pts.slice(0,n), {theme:mapTheme});
+  const p = s.pts[Math.min(n-1, s.pts.length-1)];
+  svg.insertAdjacentHTML('beforeend', `<circle cx="${p[0]}" cy="${p[1]}" r="2.6" fill="#ffffff" stroke="#fc4c02" stroke-width="2"/>`);
+  const icon = $('#btnPauseIcon');
+  if(s.paused){
+    icon.setAttribute('viewBox','0 0 24 24');
+    icon.innerHTML = '<path d="M7 4.8v14.4a1 1 0 001.6.8l11-7.2a1 1 0 000-1.6l-11-7.2a1 1 0 00-1.6.8z" fill="currentColor"/>';
+    $('#btnPause').querySelector('span').textContent='继续';
+  } else {
+    icon.setAttribute('viewBox','0 0 24 24');
+    icon.innerHTML = '<rect x="6" y="4" width="4.4" height="16" rx="1.4"/><rect x="13.6" y="4" width="4.4" height="16" rx="1.4"/>';
+    $('#btnPause').querySelector('span').textContent='暂停';
+  }
+  renderBanner();
+}
+function tick(){
+  const s = state.session;
+  if(!s || !s.on || s.paused) return;
+  s.sec = Math.round((Date.now()-s.t0)/1000);
+  s.spd = 22 + Math.sin(s.sec/7)*6 + Math.random()*3;
+  s.dist += s.spd/3600;
+  s.hr = 148 + Math.sin(s.sec/13)*12 + Math.random()*4;
+  if(Math.random()<0.06) s.elev += Math.random()*2.5;
+  if(state.pre.autoLap && s.dist - s.lapBase >= 5){ s.lapBase = s.dist; doLap(true); }
+  if(state.page==='rec' && s.on) syncRecUI();
+  renderBanner();
+}
+function doLap(auto){
+  const s = state.session; if(!s) return;
+  s.laps++;
+  if(!auto) toast('已计圈 · L'+(s.laps+1)+' @ '+s.dist.toFixed(1)+' km');
+  syncRecUI();
+}
+function lapNow(){ doLap(false); }
+function togglePause(){
+  const s = state.session; if(!s) return;
+  s.paused = !s.paused;
+  toast(s.paused?'已暂停':'继续记录');
+  syncRecUI();
+}
+function abortRide(){
+  if(!state.session) return;
+  if(!abortArmed){
+    abortArmed = true;
+    const b=$('#abortBtn'); b.classList.add('armed'); b.textContent='再点一次确认放弃';
+    clearTimeout(abortTimer);
+    abortTimer=setTimeout(()=>{ abortArmed=false; b.classList.remove('armed'); b.textContent='放弃本次骑行'; },3000);
+    return;
+  }
+  abortArmed=false;
+  const b=$('#abortBtn'); b.classList.remove('armed'); b.textContent='放弃本次骑行';
+  state.session = null;
+  go('rec');
+  toast('本次骑行已放弃');
+  renderBanner();
+}
+function finishRide(){
+  const s = state.session; if(!s) return;
+  s.paused = true;
+  const hrs = s.sec/3600;
+  $('#sumName').textContent = s.type+'骑行 · '+(now.getMonth()+1)+'-'+pad(now.getDate());
+  $('#sDist').textContent = s.dist.toFixed(1)+' km';
+  $('#sTime').textContent = fmtDur(s.sec);
+  $('#sSpd').textContent = (s.dist>0&&hrs>0?(s.dist/hrs):0).toFixed(1)+' km/h';
+  $('#sElev').textContent = Math.round(s.elev)+' m';
+  $('#sHr').textContent = Math.round(s.hr)+' bpm';
+  $('#sLap').textContent = s.laps+' 圈';
+  $('#summaryOv').classList.add('show');
+}
+function cancelSummary(){ $('#summaryOv').classList.remove('show'); const s=state.session; if(s) s.paused=false; syncRecUI(); }
+function saveRide(){
+  const s = state.session;
+  $('#summaryOv').classList.remove('show');
+  const hr = now.getHours();
+  const suffix = hr>=17?'晚间骑行':(hr<10?'晨骑':'午间骑行');
+  const nm = s.type==='通勤'? '通勤骑行' : s.type+' '+suffix;
+  state.rides.push(seedRide(nm, new Date(now), +s.dist.toFixed(1), Math.max(1,Math.round(s.sec/60)), Math.round(s.elev), '手机', s.type));
+  state.session = null;
+  go('home');
+  toast('已保存 · '+nm+'（点击该条可看详情）');
+  renderHomeAll(); renderBanner();
+}
+
+/* ================= misc ================= */
+let toastTimer;
+function toast(msg){
+  const t=$('#toast'); t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove('show'),2200);
+}
+function doDraft(action){
+  toast(action==='continue'?'继续草稿 → 记录会话（RC-14）': action==='save'?'草稿已保存为活动':'草稿已丢弃');
+  if(action==='continue') go('rec');
+}
+function resetDemo(){
+  state.session = null;
+  currentRoute=null; currentDetail=null;
+  abortArmed=false; delArmed=false;
+  $('#summaryOv').classList.remove('show');
+  $('#routeOv').classList.remove('show');
+  $('#segState').querySelector('[data-v=data]').click();
+  state.rides = [
+    seedRide('晨骑', daysAgo(1), 42.3, 193, 640),
+    seedRide('通勤', daysAgo(2), 12.1, 38, 40, '导入','通勤'),
+    seedRide('午间骑行', daysAgo(3), 28.7, 95, 212),
+    seedRide('晚间骑行', daysAgo(5), 3.2, 42, 186),
+    seedRide('晨骑', daysAgo(6), 6.8, 40, 90),
+    seedRide('长途', daysAgo(18), 96.0, 390, 1180),
+  ];
+  go('home');
+  toast('演示数据已重置');
+}
+
+/* ================= wiring ================= */
+window.P = {go, do:doDraft, toast, startRide, togglePause, lapNow, finishRide, abortRide, saveRide, cancelSummary,
+  openRoute, closeRouteOv, startRoute, openStats, openStatsFromMe, backHome, simImport,
+  openActivityList, openDetail, closeDetail, closeSub, setActFilter, deleteRide,
+  heatNav, heatDay};
+$$('#segState button').forEach(b=>b.addEventListener('click',()=>applyMode(b.dataset.v)));
+$$('#segPeriod button').forEach(b=>b.addEventListener('click',()=>{
+  $$('#segPeriod button').forEach(x=>x.classList.toggle('on',x===b));
+  state.period=b.dataset.p; renderOverview();
+}));
+$$('#segStat button').forEach(b=>b.addEventListener('click',()=>{
+  $$('#segStat button').forEach(x=>x.classList.toggle('on',x===b));
+  state.statPeriod=b.dataset.p; renderStats();
+}));
+$$('#trendSeg button').forEach(b=>b.addEventListener('click',()=>{
+  $$('#trendSeg button').forEach(x=>x.classList.toggle('on',x===b));
+  trendKind=b.dataset.v; renderTrend();
+}));
+$$('#segMap button').forEach(b=>b.addEventListener('click',()=>{
+  $$('#segMap button').forEach(x=>x.classList.toggle('on',x===b));
+  mapTheme=b.dataset.m;
+  renderMapMain(); renderRoutes();
+}));
+$$('#actFilters .chip').forEach(c=>c.addEventListener('click',()=>setActFilter(c.dataset.f)));
+$$('#typeChips .chip').forEach(c=>c.addEventListener('click',()=>{
+  state.pre.type=c.dataset.t;
+  $$('#typeChips .chip').forEach(x=>x.classList.toggle('on',x===c));
+}));
+$('#swAutoPause').addEventListener('click',()=>{ state.pre.autoPause=!state.pre.autoPause; $('#swAutoPause').classList.toggle('on',state.pre.autoPause); });
+$('#swAutoLap').addEventListener('click',()=>{ state.pre.autoLap=!state.pre.autoLap; $('#swAutoLap').classList.toggle('on',state.pre.autoLap); });
+$('#segRide').querySelector('[data-v=start]').addEventListener('click',()=>{ if(!state.session||!state.session.on){ startRide(); } else { go('rec'); } });
+$('#segRide').querySelector('[data-v=idle]').addEventListener('click',()=>{ if(state.session&&state.session.on){ state.session.paused=false; finishRide(); } });
+$('#segOps').querySelector('[data-v=save]').addEventListener('click',()=>{ if(state.session&&state.session.on){ finishRide(); } else { toast('当前没有进行中的骑行'); } });
+$('#segOps').querySelector('[data-v=reset]').addEventListener('click',resetDemo);
+
+function tickClock(){ $('#sbTime').textContent = pad(new Date().getHours())+':'+pad(new Date().getMinutes()); }
+setInterval(tickClock, 20000); tickClock();
+setInterval(tick, 1000);
+renderHomeAll();
+renderMapMain();
+renderRoutes();
+renderRecPage();
+renderMe();
+</script>
+</body>
+</html>
