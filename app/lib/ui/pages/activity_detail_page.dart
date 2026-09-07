@@ -41,7 +41,7 @@ class ActivityDetailPage extends ConsumerWidget {
               '${r.startAt.year}-${r.startAt.month}-${r.startAt.day} ${r.startAt.hour}:${r.startAt.minute.toString().padLeft(2, '0')}'),
           _item('距离', '${r.distanceKm.toStringAsFixed(1)} km'),
           _item('时长(移动)', _fmtSec(r.durationMin),
-              sub: '${_fmtSec(r.durationMin * 60)}'),
+              sub: _fmtSec(r.durationMin * 60)),
           _item('均速', '${speed.toStringAsFixed(1)} km/h'),
           _item('累计爬升', '${r.elevGainM.round()} m'),
           const SizedBox(height: 10),
