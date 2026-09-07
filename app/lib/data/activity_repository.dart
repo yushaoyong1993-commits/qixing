@@ -1,0 +1,105 @@
+import 'dart:io';
+
+import 'package:drift/drift.dart';
+import 'package:drift/native.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+
+import '../domain/stats/aggregate.dart';
+import 'database.dart';
+
+export 'database.dart';
+
+/// 打开应用的持久化数据库（移动端/桌面：Documents 目录下的 basho.db）。
+Future<BashoDatabase> openBashoDatabase() async {
+  final dir = await getApplicationDocumentsDirectory();
+  final file = p.join(dir.path, 'basho.db');
+  return _openFile(file);
+}
+
+/// 测试用：内存数据库。
+Future<BashoDatabase> openInMemoryDatabase() async {
+  return BashoDatabase(NativeDatabase.memory());
+}
+
+BashoDatabase _openFile(String path) {
+  return BashoDatabase(LazyDatabase(() async {
+    final file = File(path);
+    return NativeDatabase.createInBackground(file);
+  }));
+}
+
+/// 活动仓库：负责把 DB 的 Activity 映射为领域层 [RideLite]，供聚合内核使用。
+class ActivityRepository {
+  ActivityRepository(this._db);
+
+  final BashoDatabase _db;
+
+  /// 全部活动（倒序），映射为 [RideLite]（距离/时长/爬升换算为 km 与 min）。
+  Stream<List<RideLite>> watchRides() {
+    final q = _db.select(_db.activities)
+      ..orderBy([(t) => OrderingTerm.desc(t.startAt)]);
+    return q.watch().map((rows) => rows.map(_toRide).toList());
+  }
+
+  Future<List<RideLite>> rides() async {
+    final rows = await (_db.select(_db.activities)
+          ..orderBy([(t) => OrderingTerm.desc(t.startAt)])).get();
+    return rows.map(_toRide).toList();
+  }
+
+  /// 保存一次骑行（记录摘要落库；轨迹在后续 M1 增量实现）。
+  Future<int> saveRide({
+    required String name,
+    required String type,
+    required DateTime startAt,
+    required int durationS,
+    required int movingS,
+    required double distanceM,
+    required double elevGainM,
+    required double elevLossM,
+    int? hrAvg,
+    int? hrMax,
+    int kcal = 0,
+    String source = '手机',
+    String note = '',
+  }) {
+    return _db.into(_db.activities).insert(ActivitiesCompanion.insert(
+          name: Value(name),
+          type: Value(type),
+          startAt: startAt,
+          endAt: Value(DateTime.now()),
+          durationS: Value(durationS),
+          movingS: Value(movingS),
+          distanceM: Value(distanceM),
+          elevGainM: Value(elevGainM),
+          elevLossM: Value(elevLossM),
+          hrAvg: Value(hrAvg),
+          hrMax: Value(hrMax),
+          kcal: Value(kcal),
+          source: Value(source),
+          note: Value(note),
+        ));
+  }
+
+  Future<void> deleteRide(int id) {
+    return (_db.delete(_db.activities)..where((t) => t.id.equals(id))).go();
+  }
+
+  Future<void> updateMeta(int id, {String? name, String? type, String? note}) {
+    final patch = ActivitiesCompanion(
+      name: name == null ? const Value.absent() : Value(name),
+      type: type == null ? const Value.absent() : Value(type),
+      note: note == null ? const Value.absent() : Value(note),
+    );
+    return (_db.update(_db.activities)..where((t) => t.id.equals(id))).write(patch);
+  }
+
+  RideLite _toRide(Activity a) => RideLite(
+        id: a.id,
+        startAt: a.startAt,
+        distanceKm: a.distanceM / 1000,
+        durationMin: a.movingS / 60,
+        elevGainM: a.elevGainM,
+      );
+}
