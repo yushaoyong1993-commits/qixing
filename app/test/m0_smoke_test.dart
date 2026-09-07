@@ -28,7 +28,7 @@ void main() {
     await tester.tap(find.text('我的'));
     await tester.pump();
     await tester.pump();
-    expect(find.text('个人中心（建设中）'), findsOneWidget);
+    expect(find.text('本地骑行者'), findsOneWidget);
 
     await tester.tap(find.text('首页'));
     await tester.pump();

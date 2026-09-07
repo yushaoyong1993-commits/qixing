@@ -5,6 +5,8 @@ import '../../core/periods.dart';
 import '../../data/providers.dart';
 import '../../domain/stats/aggregate.dart' as k;
 import '../../theme/app_theme.dart';
+import 'activity_detail_page.dart';
+import 'activity_list_page.dart';
 import 'stats_page.dart';
 
 /// 首页（M1）：真实数据驱动——概览卡(今日/本周/本月) + 最近活动 + 空态。
@@ -126,9 +128,20 @@ class _HomePageState extends ConsumerState<HomePage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Padding(
-          padding: EdgeInsets.only(left: 2, bottom: 8),
-          child: Text('最近活动', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+        Padding(
+          padding: const EdgeInsets.only(left: 2, bottom: 4),
+          child: Row(
+            children: [
+              const Text('最近活动', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+              const Spacer(),
+              TextButton(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const ActivityListPage()),
+                ),
+                child: const Text('全部'),
+              ),
+            ],
+          ),
         ),
         Container(
           decoration: BoxDecoration(
@@ -154,7 +167,9 @@ class _HomePageState extends ConsumerState<HomePage> {
       subtitle: Text('${r.distanceKm.toStringAsFixed(1)} km · 爬升 ${r.elevGainM.round()} m'),
       trailing: Text('${avgSpeed.toStringAsFixed(1)} km/h',
           style: const TextStyle(fontSize: 13, color: AppTheme.txt2)),
-      onTap: () => _coming(context),
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => ActivityDetailPage(rideId: r.id)),
+      ),
     );
   }
 
