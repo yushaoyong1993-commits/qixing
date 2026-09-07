@@ -95,6 +95,36 @@ class ActivityRepository {
     return (_db.update(_db.activities)..where((t) => t.id.equals(id))).write(patch);
   }
 
+  // —— 草稿（崩溃恢复，RCD-07）——
+  Future<void> saveDraft({
+    required String type,
+    required DateTime startedAt,
+    required int totalS,
+    required double distanceKm,
+    required int laps,
+  }) {
+    return _db.into(_db.drafts).insert(DraftsCompanion.insert(
+          type: Value(type),
+          startedAt: startedAt,
+          totalS: Value(totalS),
+          distanceKm: Value(distanceKm),
+          laps: Value(laps),
+        ));
+  }
+
+  Future<DraftData?> loadDraft() async {
+    final rows = await (_db.select(_db.drafts)
+          ..orderBy([(t) => OrderingTerm.desc(t.id)])
+          ..limit(1)).get();
+    if (rows.isEmpty) return null;
+    final d = rows.first;
+    return DraftData(type: d.type, startedAt: d.startedAt, totalS: d.totalS, distanceKm: d.distanceKm, laps: d.laps);
+  }
+
+  Future<void> deleteDraft() {
+    return _db.delete(_db.drafts).go();
+  }
+
   RideLite _toRide(Activity a) => RideLite(
         id: a.id,
         startAt: a.startAt,
@@ -102,4 +132,20 @@ class ActivityRepository {
         durationMin: a.movingS / 60,
         elevGainM: a.elevGainM,
       );
+}
+
+/// 记录会话草稿（用于崩溃恢复）。
+class DraftData {
+  const DraftData({
+    required this.type,
+    required this.startedAt,
+    required this.totalS,
+    required this.distanceKm,
+    required this.laps,
+  });
+  final String type;
+  final DateTime startedAt;
+  final int totalS;
+  final double distanceKm;
+  final int laps;
 }
