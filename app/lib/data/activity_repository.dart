@@ -125,6 +125,38 @@ class ActivityRepository {
     return _db.delete(_db.drafts).go();
   }
 
+  // —— 轨迹点 ——
+  Future<void> saveTrackPoints(int activityId, List<SimpleTrack> points) async {
+    if (points.isEmpty) return;
+    await _db.batch((b) {
+      b.insertAll(_db.trackPoints, [
+        for (final p in points)
+          TrackPointsCompanion.insert(
+            activityId: activityId,
+            tMs: p.tMs,
+            latE7: (p.lat * 1e7).round(),
+            lonE7: (p.lon * 1e7).round(),
+            altCm: Value(p.altM == null ? null : (p.altM! * 100).round()),
+            speedMps: Value(p.speedMps),
+          ),
+      ]);
+    });
+  }
+
+  Future<List<SimpleTrack>> trackPointsFor(int activityId) async {
+    final q = _db.select(_db.trackPoints)
+      ..where((t) => t.activityId.equals(activityId))
+      ..orderBy([(t) => OrderingTerm.asc(t.tMs)]);
+    final rows = await q.get();
+    return rows.map((r) => SimpleTrack(
+          tMs: r.tMs,
+          lat: r.latE7 / 1e7,
+          lon: r.lonE7 / 1e7,
+          altM: r.altCm == null ? null : r.altCm! / 100,
+          speedMps: r.speedMps,
+        )).toList();
+  }
+
   RideLite _toRide(Activity a) => RideLite(
         id: a.id,
         startAt: a.startAt,
@@ -148,4 +180,21 @@ class DraftData {
   final int totalS;
   final double distanceKm;
   final int laps;
+}
+
+
+/// 轨迹点（读写视图）。
+class SimpleTrack {
+  const SimpleTrack({
+    required this.tMs,
+    required this.lat,
+    required this.lon,
+    this.altM,
+    this.speedMps,
+  });
+  final int tMs;
+  final double lat;
+  final double lon;
+  final double? altM;
+  final double? speedMps;
 }

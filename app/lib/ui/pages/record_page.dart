@@ -35,6 +35,7 @@ class _RecordPageState extends ConsumerState<RecordPage> {
   bool _gpsReady = false;
 
   DraftData? _draft;
+  final List<SimpleTrack> _tracks = [];
 
   @override
   void initState() {
@@ -96,9 +97,10 @@ class _RecordPageState extends ConsumerState<RecordPage> {
       double dtSec = 0;
       double distKm = 0;
       double elevDelta = 0;
+      double meters = 0;
       if (_last != null) {
         dtSec = nowT.difference(_last!.timestamp).inMilliseconds / 1000;
-        final meters = Geolocator.distanceBetween(
+        meters = Geolocator.distanceBetween(
           _last!.latitude, _last!.longitude, pos.latitude, pos.longitude);
         distKm = meters / 1000;
         if (pos.altitude.isFinite && _last!.altitude.isFinite && pos.altitude > _last!.altitude) {
@@ -109,6 +111,15 @@ class _RecordPageState extends ConsumerState<RecordPage> {
       final spd = pos.speed.isFinite && pos.speed >= 0 ? pos.speed * 3.6 : 0.0;
       _spdKmph = spd;
       _m.addSample(dtSec: dtSec, distKm: distKm, elevM: elevDelta);
+      if (meters >= 5 || _tracks.isEmpty) {
+        _tracks.add(SimpleTrack(
+          tMs: pos.timestamp.millisecondsSinceEpoch,
+          lat: pos.latitude,
+          lon: pos.longitude,
+          altM: pos.altitude.isFinite ? pos.altitude : null,
+          speedMps: (pos.speed.isFinite && pos.speed >= 0) ? pos.speed : null,
+        ));
+      }
       if (_autoLap && _m.distanceKm - _lapBase >= 5) {
         _lapBase = _m.distanceKm;
         _m.lap();
@@ -136,6 +147,7 @@ class _RecordPageState extends ConsumerState<RecordPage> {
     _lapBase = _m.distanceKm;
     _last = null;
     _spdKmph = 0;
+    _tracks.clear();
     setState(() {});
     _initLoc();
   }
@@ -193,7 +205,7 @@ class _RecordPageState extends ConsumerState<RecordPage> {
 
   Future<void> _save() async {
     final repo = ref.read(activityRepositoryProvider);
-    await repo.saveRide(
+    final id = await repo.saveRide(
       name: '$_type骑行',
       type: _type,
       startAt: _startedAt,
@@ -206,6 +218,7 @@ class _RecordPageState extends ConsumerState<RecordPage> {
       hrMax: null,
       kcal: (_m.distanceKm * 24).round(),
     );
+    if (_tracks.isNotEmpty) await repo.saveTrackPoints(id, _tracks);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('已保存 · 首页/统计已自动刷新', textAlign: TextAlign.center)),
