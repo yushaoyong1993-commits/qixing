@@ -31,7 +31,7 @@ class ActivityDetailPage extends ConsumerWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.delete_outline),
-            onPressed: () => _confirmDelete(context, ref, r.id),
+            onPressed: () => _confirmDelete(context, ref, r!.id),
           ),
         ],
       ),
