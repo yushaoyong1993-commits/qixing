@@ -8,12 +8,14 @@ enum SessionPhase { idle, recording, paused, summary }
 class SessionMachine {
   SessionPhase _phase = SessionPhase.idle;
   double _distanceKm = 0;
+  double _elevGainM = 0;
   int _movingSec = 0;
   int _lapCount = 0;
   bool _autoPause = true;
 
   SessionPhase get phase => _phase;
   double get distanceKm => _distanceKm;
+  double get elevGainM => _elevGainM;
   int get movingSec => _movingSec;
   int get lapCount => _lapCount;
   bool get autoPause => _autoPause;
@@ -66,12 +68,21 @@ class SessionMachine {
   void discard() {
     _phase = SessionPhase.idle;
     _distanceKm = 0;
+    _elevGainM = 0;
     _movingSec = 0;
     _lapCount = 0;
   }
 
-  /// 周期性推进（由计时器每秒调用）。
-  /// [speedKmh] 当前速度；[stopped] 速度≈0（供自动暂停判定）。
+  /// 采纳一个"真实采样"（由位置流驱动）：累加移动时长、距离、正爬升。
+  /// 注意：暂停期间不接收（调用方暂停订阅；此处也做防御）。
+  void addSample({required double dtSec, required double distKm, double elevM = 0}) {
+    if (_phase != SessionPhase.recording) return;
+    _movingSec += dtSec.round();
+    _distanceKm += distKm;
+    if (elevM > 0) _elevGainM += elevM;
+  }
+
+  /// 周期性推进（模拟用：无真实定位时按速度估算）。真实定位请用 [addSample]。
   void advance({required double dtSec, required double speedKmh, bool stopped = false}) {
     if (_phase != SessionPhase.recording) return;
     if (_autoPause && stopped) {

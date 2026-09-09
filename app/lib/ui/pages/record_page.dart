@@ -1,15 +1,15 @@
 import 'dart:async';
-import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 
 import '../../data/activity_repository.dart';
 import '../../data/providers.dart';
 import '../../domain/record/session_machine.dart';
 import '../../theme/app_theme.dart';
 
-/// 记录页（M1）：类型/自动暂停/自动计圈 + 会话状态机计时 + 草稿恢复 + 保存闭环。
+/// 记录页（M1）：真实 GPS 定位驱动（速度/距离/爬升都来自位置流）+ 会话状态机 + 草稿 + 保存。
 class RecordPage extends ConsumerStatefulWidget {
   const RecordPage({super.key});
 
@@ -28,9 +28,12 @@ class _RecordPageState extends ConsumerState<RecordPage> {
 
   DateTime _startedAt = DateTime.now();
 
-  Timer? _t;
-  final Random _r = Random();
-  double _speed = 0;
+  // 真实定位
+  StreamSubscription<Position>? _posSub;
+  Position? _last;
+  double _spdKmph = 0;
+  bool _gpsReady = false;
+
   DraftData? _draft;
 
   @override
@@ -46,7 +49,7 @@ class _RecordPageState extends ConsumerState<RecordPage> {
 
   @override
   void dispose() {
-    _t?.cancel();
+    _posSub?.cancel();
     _persistDraftIfActive();
     super.dispose();
   }
@@ -63,6 +66,61 @@ class _RecordPageState extends ConsumerState<RecordPage> {
     }
   }
 
+  Future<void> _initLoc() async {
+    try {
+      var p = await Geolocator.checkPermission();
+      if (p == LocationPermission.denied) p = await Geolocator.requestPermission();
+      if (p == LocationPermission.denied || p == LocationPermission.deniedForever) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('未授予定位权限，将无法记录真实轨迹', textAlign: TextAlign.center)),
+          );
+        }
+        return;
+      }
+      _posSub = Geolocator.getPositionStream(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.best,
+          distanceFilter: 2,
+        ),
+      ).listen(_onPos, onError: (_) {});
+      setState(() => _gpsReady = false);
+    } catch (_) {
+      // 无定位环境（如测试/模拟器无插件）时静默降级：距离为 0，仍可记录计时。
+    }
+  }
+
+  void _onPos(Position pos) {
+    if (_m.phase == SessionPhase.recording) {
+      final nowT = pos.timestamp;
+      double dtSec = 0;
+      double distKm = 0;
+      double elevDelta = 0;
+      if (_last != null) {
+        dtSec = nowT.difference(_last!.timestamp).inMilliseconds / 1000;
+        final meters = Geolocator.distanceBetween(
+          _last!.latitude, _last!.longitude, pos.latitude, pos.longitude);
+        distKm = meters / 1000;
+        if (pos.altitude.isFinite && _last!.altitude.isFinite && pos.altitude > _last!.altitude) {
+          elevDelta = pos.altitude - _last!.altitude;
+        }
+      }
+      _last = pos;
+      final spd = pos.speed.isFinite && pos.speed >= 0 ? pos.speed * 3.6 : 0.0;
+      _spdKmph = spd;
+      _m.addSample(dtSec: dtSec, distKm: distKm, elevM: elevDelta);
+      if (_autoLap && _m.distanceKm - _lapBase >= 5) {
+        _lapBase = _m.distanceKm;
+        _m.lap();
+      }
+      if (_autoPause && spd < 0.5) _pause(); // 速度≈0 自动暂停
+      _gpsReady = true;
+      if (mounted) setState(() {});
+    } else {
+      _last = pos;
+    }
+  }
+
   void _start({bool resume = false}) {
     if (!resume) {
       if (!_m.start(autoPause: _autoPause)) return;
@@ -76,32 +134,37 @@ class _RecordPageState extends ConsumerState<RecordPage> {
       _draft = null;
     }
     _lapBase = _m.distanceKm;
-    _t?.cancel();
-    _t = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (_m.phase == SessionPhase.recording) {
-        _speed = 22 + _r.nextDouble() * 12;
-        _m.advance(dtSec: 1, speedKmh: _speed, stopped: _autoPause && _speed < 0.5);
-        if (_autoLap && _m.distanceKm - _lapBase >= 5) {
-          _lapBase = _m.distanceKm;
-          _m.lap();
-        }
-      }
-      setState(() {});
-    });
+    _last = null;
+    _spdKmph = 0;
+    setState(() {});
+    _initLoc();
+  }
+
+  void _pause() {
+    if (_m.phase != SessionPhase.recording) return;
+    _m.pause();
+    _posSub?.pause();
+    setState(() {});
+  }
+
+  void _resume() {
+    if (_m.phase != SessionPhase.paused) return;
+    _m.resume();
+    _posSub?.resume();
     setState(() {});
   }
 
   void _pauseOrResume() {
     if (_m.phase == SessionPhase.recording) {
-      _m.pause();
+      _pause();
     } else if (_m.phase == SessionPhase.paused) {
-      _m.resume();
+      _resume();
     }
-    setState(() {});
   }
 
   Future<void> _stop() async {
-    _t?.cancel();
+    _posSub?.cancel();
+    _posSub = null;
     _m.finish();
     setState(() {});
     final ok = await showDialog<bool>(
@@ -109,10 +172,9 @@ class _RecordPageState extends ConsumerState<RecordPage> {
       builder: (c) => AlertDialog(
         title: const Text('骑行完成 🎉'),
         content: Text(
-          '类型 $_type\n'
-          '距离 ${_m.distanceKm.toStringAsFixed(1)} km\n'
+          '类型 $_type\n距离 ${_m.distanceKm.toStringAsFixed(1)} km\n'
           '时长 ${_fmtSec(_m.movingSec)}\n'
-          '圈数 ${_m.lapCount}',
+          '爬升 ${_m.elevGainM.round()} m · 圈数 ${_m.lapCount}',
           textAlign: TextAlign.center,
         ),
         actions: [
@@ -124,7 +186,8 @@ class _RecordPageState extends ConsumerState<RecordPage> {
     await ref.read(activityRepositoryProvider).deleteDraft();
     if (ok == true) await _save();
     _m.discard();
-    _speed = 0;
+    _spdKmph = 0;
+    _last = null;
     setState(() {});
   }
 
@@ -137,8 +200,8 @@ class _RecordPageState extends ConsumerState<RecordPage> {
       durationS: _m.movingSec,
       movingS: _m.movingSec,
       distanceM: _m.distanceKm * 1000,
-      elevGainM: _m.distanceKm * 1.6,
-      elevLossM: _m.distanceKm * 1.4,
+      elevGainM: _m.elevGainM,
+      elevLossM: _m.elevGainM * 0.9,
       hrAvg: null,
       hrMax: null,
       kcal: (_m.distanceKm * 24).round(),
@@ -196,7 +259,10 @@ class _RecordPageState extends ConsumerState<RecordPage> {
           const Icon(Icons.directions_bike, size: 48, color: AppTheme.accent),
           const SizedBox(height: 10),
           Text('开始骑行', style: _h1),
-          const SizedBox(height: 18),
+          const SizedBox(height: 6),
+          const Text('真实 GPS 定位 · 速度/距离/爬升均来自手机定位',
+              style: TextStyle(fontSize: 12, color: AppTheme.txt3)),
+          const SizedBox(height: 16),
           Row(
             children: [
               for (final t in _types)
@@ -209,7 +275,7 @@ class _RecordPageState extends ConsumerState<RecordPage> {
                 ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           SwitchListTile(
             title: const Text('自动暂停', style: TextStyle(fontSize: 13.5)),
             subtitle: const Text('速度≈0 时暂停计时', style: TextStyle(fontSize: 11, color: AppTheme.txt3)),
@@ -238,19 +304,26 @@ class _RecordPageState extends ConsumerState<RecordPage> {
 
   Widget _live() {
     final paused = _m.phase == SessionPhase.paused;
+    final avg = _m.movingSec > 0 ? _m.distanceKm / (_m.movingSec / 3600) : 0.0;
     return Column(
       children: [
         Text(_fmtSec(_m.movingSec), style: _h1.copyWith(fontSize: 54)),
+        const SizedBox(height: 6),
+        Text(paused ? '已暂停' : (_gpsReady ? '记录中 · GPS 正常' : '定位中… · 请到开阔处'),
+            style: TextStyle(fontSize: 12.5, color: paused ? AppTheme.warn : AppTheme.txt3)),
         const SizedBox(height: 14),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
+            _stat('速度 km/h', _spdKmph.toStringAsFixed(1)),
             _stat('距离 km', _m.distanceKm.toStringAsFixed(1)),
-            _stat('均速 km/h', _m.distanceKm > 0 ? (_m.distanceKm / (_m.movingSec / 3600)).toStringAsFixed(1) : '0.0'),
-            _stat('圈数', '${_m.lapCount}'),
+            _stat('均速 km/h', avg.toStringAsFixed(1)),
           ],
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 6),
+        Text('爬升 ${_m.elevGainM.round()} m · 圈数 ${_m.lapCount}',
+            style: const TextStyle(fontSize: 12, color: AppTheme.txt2)),
+        const SizedBox(height: 20),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -267,8 +340,6 @@ class _RecordPageState extends ConsumerState<RecordPage> {
             ),
           ],
         ),
-        Text('$_type · 记录中${paused ? '（已暂停）' : ''} · 切走不中断',
-            style: const TextStyle(fontSize: 12.5, color: AppTheme.txt3)),
       ],
     );
   }
