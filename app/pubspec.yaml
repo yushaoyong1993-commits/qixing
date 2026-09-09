@@ -40,7 +40,8 @@ dependencies:
   # —— M1 依赖注入 / 响应式 ——
   flutter_riverpod: ^2.5.1
   geolocator: ^13.0.1
-
+  flutter_map: ^8.3.2
+  latlong2: ^0.10.1
 dev_dependencies:
   flutter_test:
     sdk: flutter

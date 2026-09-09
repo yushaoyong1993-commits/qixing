@@ -4,6 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/providers.dart';
 import '../../data/route_repository.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart' show LatLng;
+
 import '../../theme/app_theme.dart';
 
 /// 地图 · 路线（M1 纯数据版）：我的路线列表 + 新建手绘 + 删除。
@@ -26,25 +29,51 @@ class MapPage extends ConsumerWidget {
           ),
         ],
       ),
-      body: routes.isEmpty
-          ? const Center(child: Text('还没有路线，点右上角 ＋ 手绘一条', style: TextStyle(color: AppTheme.txt3)))
-          : ListView.separated(
-              padding: const EdgeInsets.all(12),
-              itemCount: routes.length,
-              separatorBuilder: (_, _) => const Divider(height: 1),
-              itemBuilder: (_, i) {
-                final r = routes[i];
-                return ListTile(
-                  leading: _RouteThumb(points: r.points),
-                  title: Text(r.name, style: const TextStyle(fontSize: 14)),
-                  subtitle: Text('${r.distKm.toStringAsFixed(1)} km · ${r.points.length} 点'),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.delete_outline, color: AppTheme.txt3),
-                    onPressed: () => _confirmDelete(context, ref, r),
-                  ),
-                );
-              },
+      body: Column(
+        children: [
+          SizedBox(
+            height: 240,
+            child: FlutterMap(
+              options: const MapOptions(initialCenter: LatLng(39.908, 116.397), initialZoom: 12),
+              children: [
+                TileLayer(
+                  urlTemplate: 'https://webrd0{s}.is.autonavi.com/appmaptile?style=7&x={x}&y={y}&z={z}',
+                  subdomains: const ['1', '2', '3', '4'],
+                  userAgentPackageName: 'com.basho.basho',
+                ),
+              ],
             ),
+          ),
+          const Padding(
+            padding: EdgeInsets.only(top: 8, left: 4),
+            child: Text('高德路网瓦片 · 可拖动缩放',
+                style: TextStyle(fontSize: 11, color: AppTheme.txt3)),
+          ),
+          Expanded(
+            child: routes.isEmpty
+                ? const Center(child: Text('还没有路线，点右上角 ＋ 手绘一条',
+                    style: TextStyle(color: AppTheme.txt3)))
+                : ListView.separated(
+                    padding: const EdgeInsets.all(12),
+                    itemCount: routes.length,
+                    separatorBuilder: (_, _) => const Divider(height: 1),
+                    itemBuilder: (_, i) {
+                      final r = routes[i];
+                      return ListTile(
+                        leading: _RouteThumb(points: r.points),
+                        title: Text(r.name, style: const TextStyle(fontSize: 14)),
+                        subtitle: Text(
+                            '${r.distKm.toStringAsFixed(1)} km · ${r.points.length} 点'),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete_outline, color: AppTheme.txt3),
+                          onPressed: () => _confirmDelete(context, ref, r),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
     );
   }
 
