@@ -7,7 +7,8 @@ TileLayer amapTileLayer() => TileLayer(
           'https://webrd0{s}.is.autonavi.com/appmaptile?style=7&x={x}&y={y}&z={z}',
       subdomains: const ['1', '2', '3', '4'],
       userAgentPackageName: 'com.basho.basho',
-      tileProvider: NetworkTileProvider(headers: const {
+      tileProvider: NetworkTileProvider(headers: {
+        // 注意：不能用 const map —— flutter_map 内部会修改该 map（补默认 header）
         'Referer': 'https://www.amap.com/',
         'User-Agent':
             'Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
