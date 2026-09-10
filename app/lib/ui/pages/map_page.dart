@@ -1,18 +1,18 @@
-
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:latlong2/latlong.dart' show LatLng, Distance, LengthUnit;
 
 import '../../data/providers.dart';
 import '../../data/route_repository.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart' show LatLng;
-
 import '../../theme/app_theme.dart';
+import '../widgets/map_tiles.dart';
 
-/// 地图 · 路线（M1 纯数据版）：我的路线列表 + 新建手绘 + 删除。
-/// 说明：真实地图渲染依赖地图引擎（M1 内 POC），本期先用画布手绘并用归一化点存库，重绘/渲染已解耦（MapEngine 抽象见 domain/maps）。
+/// 地图 · 路线：真实高德瓦片地图 + 我的路线（经纬度存储）+ 在真地图上手绘。
 class MapPage extends ConsumerWidget {
   const MapPage({super.key});
+
+  static const _homeCenter = LatLng(39.908, 116.397); // 默认视野（北京）
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -23,7 +23,7 @@ class MapPage extends ConsumerWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.add),
-            tooltip: '新建手绘路线',
+            tooltip: '在地图上手绘路线',
             onPressed: () =>
                 Navigator.of(context).push(MaterialPageRoute(builder: (_) => const RouteEditorPage())),
           ),
@@ -32,27 +32,22 @@ class MapPage extends ConsumerWidget {
       body: Column(
         children: [
           SizedBox(
-            height: 240,
+            height: 260,
             child: FlutterMap(
-              options: const MapOptions(initialCenter: LatLng(39.908, 116.397), initialZoom: 12),
-              children: [
-                TileLayer(
-                  urlTemplate: 'https://webrd0{s}.is.autonavi.com/appmaptile?style=7&x={x}&y={y}&z={z}',
-                  subdomains: const ['1', '2', '3', '4'],
-                  userAgentPackageName: 'com.basho.basho',
-                ),
-              ],
+              options: const MapOptions(initialCenter: _homeCenter, initialZoom: 12),
+              children: [amapTileLayer()],
             ),
           ),
           const Padding(
             padding: EdgeInsets.only(top: 8, left: 4),
-            child: Text('高德路网瓦片 · 可拖动缩放',
+            child: Text('高德路网地图 · 可拖动/双指缩放',
                 style: TextStyle(fontSize: 11, color: AppTheme.txt3)),
           ),
           Expanded(
             child: routes.isEmpty
-                ? const Center(child: Text('还没有路线，点右上角 ＋ 手绘一条',
-                    style: TextStyle(color: AppTheme.txt3)))
+                ? const Center(
+                    child: Text('还没有路线，点右上角 ＋ 在地图上手绘一条',
+                        style: TextStyle(color: AppTheme.txt3)))
                 : ListView.separated(
                     padding: const EdgeInsets.all(12),
                     itemCount: routes.length,
@@ -96,60 +91,71 @@ class MapPage extends ConsumerWidget {
   }
 }
 
-/// 路线缩略图（归一化点 → 小画布折线）。
+/// 路线缩略图：按经纬度 bbox 归一化画折线。
 class _RouteThumb extends StatelessWidget {
   const _RouteThumb({required this.points});
-  final List<List<double>> points;
+  final List<List<double>> points; // [[lat, lng], ...]
 
   @override
   Widget build(BuildContext context) {
     return Container(
       width: 56,
       height: 42,
-      decoration: BoxDecoration(
-        color: AppTheme.card2,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: CustomPaint(painter: _LinePainter(points, accent: AppTheme.accent)),
+      decoration: BoxDecoration(color: AppTheme.card2, borderRadius: BorderRadius.circular(8)),
+      child: CustomPaint(painter: _BoundsLinePainter(points, accent: AppTheme.accent)),
     );
   }
 }
 
-class _LinePainter extends CustomPainter {
-  _LinePainter(this.points, {required this.accent});
+class _BoundsLinePainter extends CustomPainter {
+  _BoundsLinePainter(this.points, {required this.accent});
   final List<List<double>> points;
   final Color accent;
 
   @override
   void paint(Canvas canvas, Size size) {
     if (points.length < 2) return;
-    final paint = Paint()
-      ..color = accent
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2;
+    double minLat = points.first[0], maxLat = minLat;
+    double minLon = points.first[1], maxLon = minLon;
+    for (final p in points) {
+      if (p[0] < minLat) minLat = p[0];
+      if (p[0] > maxLat) maxLat = p[0];
+      if (p[1] < minLon) minLon = p[1];
+      if (p[1] > maxLon) maxLon = p[1];
+    }
+    final spanLat = (maxLat - minLat).abs() < 1e-9 ? 1.0 : (maxLat - minLat).abs();
+    final spanLon = (maxLon - minLon).abs() < 1e-9 ? 1.0 : (maxLon - minLon).abs();
+    const pad = 6.0;
+    final availW = size.width - pad * 2, availH = size.height - pad * 2;
+    final scale = (availW / spanLon) < (availH / spanLat) ? availW / spanLon : availH / spanLat;
+    Offset toCanvas(double lat, double lon) => Offset(
+          pad + (lon - minLon) * scale + (availW - spanLon * scale) / 2,
+          pad + (maxLat - lat) * scale + (availH - spanLat * scale) / 2,
+        );
     final path = Path();
     for (var i = 0; i < points.length; i++) {
-      final p = Offset(points[i][0] / 100 * size.width, points[i][1] / 100 * size.height);
+      final o = toCanvas(points[i][0], points[i][1]);
       if (i == 0) {
-        path.moveTo(p.dx, p.dy);
+        path.moveTo(o.dx, o.dy);
       } else {
-        path.lineTo(p.dx, p.dy);
+        path.lineTo(o.dx, o.dy);
       }
     }
-    canvas.drawPath(path, paint);
-    canvas.drawCircle(
-        Offset(points.first[0] / 100 * size.width, points.first[1] / 100 * size.height), 3,
-        Paint()..color = Colors.white);
-    canvas.drawCircle(
-        Offset(points.last[0] / 100 * size.width, points.last[1] / 100 * size.height), 3,
-        Paint()..color = accent);
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = accent
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.2
+        ..strokeJoin = StrokeJoin.round,
+    );
   }
 
   @override
-  bool shouldRepaint(covariant _LinePainter old) => old.points != points;
+  bool shouldRepaint(covariant _BoundsLinePainter old) => old.points != points;
 }
 
-/// 手绘路线编辑器：点击画布打点，折线预览，命名保存。
+/// 手绘路线：在真实高德地图上点按打点，保存真实经纬度。
 class RouteEditorPage extends ConsumerStatefulWidget {
   const RouteEditorPage({super.key});
 
@@ -158,8 +164,9 @@ class RouteEditorPage extends ConsumerStatefulWidget {
 }
 
 class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
-  final List<Offset> _raw = []; // 0..1 归一化坐标
+  final List<LatLng> _pts = [];
   final _name = TextEditingController(text: '我的路线');
+  static const _center = LatLng(39.908, 116.397);
 
   @override
   void dispose() {
@@ -168,16 +175,17 @@ class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
   }
 
   double _distKm() {
-    var d = 0.0;
-    for (var i = 1; i < _raw.length; i++) {
-      d += (_raw[i] - _raw[i - 1]).distance;
+    var m = 0.0;
+    const d = Distance();
+    for (var i = 1; i < _pts.length; i++) {
+      m += d.as(LengthUnit.Meter, _pts[i - 1], _pts[i]);
     }
-    return d * 8.0; // 归一化单位 → 公里（演示换算：满幅 ≈ 8 km）
+    return m / 1000;
   }
 
   Future<void> _save() async {
-    if (_raw.length < 2) return;
-    final pts = _raw.map((o) => [o.dx * 100, o.dy * 100]).toList();
+    if (_pts.length < 2) return;
+    final pts = _pts.map((p) => [p.latitude, p.longitude]).toList();
     await ref.read(routeRepositoryProvider).addRoute(
           name: _name.text.trim().isEmpty ? '我的路线' : _name.text.trim(),
           points: pts,
@@ -191,62 +199,66 @@ class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('手绘路线'),
-        actions: [
-          TextButton(onPressed: _save, child: const Text('保存')),
-        ],
+        title: const Text('手绘路线（真地图）'),
+        actions: [TextButton(onPressed: _save, child: const Text('保存'))],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            TextField(
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+            child: TextField(
               controller: _name,
               decoration: const InputDecoration(labelText: '路线名称'),
             ),
-            const SizedBox(height: 12),
-            Expanded(
-              child: LayoutBuilder(
-                builder: (context, box) => GestureDetector(
-                  onTapDown: (d) => setState(() {
-                    _raw.add(Offset(
-                      (d.localPosition.dx / box.maxWidth).clamp(0.0, 1.0),
-                      (d.localPosition.dy / box.maxHeight).clamp(0.0, 1.0),
-                    ));
-                  }),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: AppTheme.card2,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: CustomPaint(
-                      painter: _LinePainter(
-                        _raw.map((o) => [o.dx * 100, o.dy * 100]).toList(),
-                        accent: AppTheme.accent,
-                      ),
-                      child: const Align(
-                        alignment: Alignment.center,
-                        child: Text('点按地图打点，连成路线', style: TextStyle(color: AppTheme.txt3)),
-                      ),
-                    ),
-                  ),
-                ),
+          ),
+          Expanded(
+            child: FlutterMap(
+              options: MapOptions(
+                initialCenter: _center,
+                initialZoom: 14,
+                onTap: (tapPos, latlng) => setState(() => _pts.add(latlng)),
               ),
+              children: [
+                amapTileLayer(),
+                if (_pts.length > 1)
+                  PolylineLayer(polylines: [
+                    Polyline(points: _pts, strokeWidth: 4, color: AppTheme.accent),
+                  ]),
+                MarkerLayer(markers: [
+                  for (var i = 0; i < _pts.length; i++)
+                    Marker(
+                      point: _pts[i],
+                      width: 18,
+                      height: 18,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: i == 0 ? Colors.white : AppTheme.accent,
+                          border: Border.all(color: AppTheme.accent, width: 2),
+                        ),
+                      ),
+                    ),
+                ]),
+              ],
             ),
-            const SizedBox(height: 8),
-            Row(
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                TextButton(
-                  onPressed: () => setState(_raw.clear),
-                  child: const Text('清空'),
-                ),
-                Text('${_raw.length} 点 · 约 ${_distKm().toStringAsFixed(1)} km',
+                TextButton(onPressed: () => setState(_pts.clear), child: const Text('清空')),
+                Text('${_pts.length} 点 · 约 ${_distKm().toStringAsFixed(2)} km',
                     style: const TextStyle(fontSize: 12, color: AppTheme.txt3)),
               ],
             ),
-          ],
-        ),
+          ),
+          const Padding(
+            padding: EdgeInsets.only(bottom: 10),
+            child: Text('在地图上点按打点，连成路线后保存',
+                style: TextStyle(fontSize: 11.5, color: AppTheme.txt3)),
+          ),
+        ],
       ),
     );
   }
