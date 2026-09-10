@@ -135,6 +135,11 @@ function boot(){
   map=new AMap.Map('map',{zoom:${widget.initialZoom},center:[116.397,39.908],resizeEnable:true});
   map.on('click',function(e){ post({type:'tap',lng:e.lnglat.getLng(),lat:e.lnglat.getLat()}); });
   setTimeout(function(){ try{ map.resize(); }catch(e){} }, 400);
+  // 兜底：页面重新可见 / 容器尺寸变化时主动 resize（修复被覆盖后地图空白）
+  document.addEventListener('visibilitychange', function(){
+    if(!document.hidden && map){ try{ map.resize(); }catch(e){} }
+  });
+  setInterval(function(){ if(map){ try{ map.resize(); }catch(e){} } }, 2500);
   post({type:'ready'});
 }
 function renderMap(o){

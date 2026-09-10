@@ -131,8 +131,7 @@ class _MapPageState extends ConsumerState<MapPage> {
           IconButton(
             icon: const Icon(Icons.add),
             tooltip: '定制路线',
-            onPressed: () => Navigator.of(context)
-                .push(MaterialPageRoute(builder: (_) => const RouteEditorPage())),
+            onPressed: () => _openEditor(),
           ),
         ],
       ),
@@ -183,9 +182,7 @@ class _MapPageState extends ConsumerState<MapPage> {
                           onPressed: () => _confirmDelete(context, ref, r),
                         ),
                         // ⑤ 点击已保存路线 → 查看/编辑（改名、继续绘制）
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => RouteEditorPage(editRoute: r)),
-                        ),
+                        onTap: () => _openEditor(route: r),
                       );
                     },
                   ),
@@ -193,6 +190,18 @@ class _MapPageState extends ConsumerState<MapPage> {
         ],
       ),
     );
+  }
+
+  /// 打开定制/编辑路线页；返回后主动刷新地图（Android WebView 被覆盖后需 resize 才会重绘）
+  Future<void> _openEditor({RouteModel? route}) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => RouteEditorPage(editRoute: route)),
+    );
+    if (!mounted) return;
+    await Future.delayed(const Duration(milliseconds: 350));
+    if (!mounted) return;
+    _mapKey.currentState?.refresh();
+    _mapKey.currentState?.render(myLoc: _myLoc);
   }
 
   Future<void> _confirmDelete(BuildContext context, WidgetRef ref, RouteModel r) async {
