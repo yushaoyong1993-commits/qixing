@@ -30,18 +30,37 @@ class AmapMapView extends StatefulWidget {
   State<AmapMapView> createState() => AmapMapViewState();
 }
 
-class AmapMapViewState extends State<AmapMapView> {
+class AmapMapViewState extends State<AmapMapView> with WidgetsBindingObserver {
   late final WebViewController _c;
   bool _ready = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _c = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(const Color(0xFFF2F2F5))
       ..addJavaScriptChannel('Basho', onMessageReceived: _onJsMessage)
       ..loadHtmlString(_html(), baseUrl: 'https://www.amap.com/');
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// App 回到前台 / 页面重新可见时刷新地图（防止 WebView 表面丢失变白）
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) refresh();
+  }
+
+  /// 强制刷新（resize + 保持当前层级）
+  void refresh() {
+    if (!_ready) return;
+    _c.runJavaScript('refreshMap();');
   }
 
   @override
@@ -102,6 +121,7 @@ function boot(){
   if(!window.AMap){ post({type:'error',msg:'高德 JS 地图加载失败（key 域名白名单/网络）'}); return; }
   map=new AMap.Map('map',{zoom:${widget.initialZoom},center:[116.397,39.908],resizeEnable:true});
   map.on('click',function(e){ post({type:'tap',lng:e.lnglat.getLng(),lat:e.lnglat.getLat()}); });
+  setTimeout(function(){ try{ map.resize(); }catch(e){} }, 400);
   post({type:'ready'});
 }
 function renderMap(o){
@@ -131,6 +151,7 @@ function renderMap(o){
   }
 }
 function moveTo(lng,lat,zoom){ if(map) map.setZoomAndCenter(zoom||16,[lng,lat]); }
+function refreshMap(){ if(map){ try{ map.resize(); }catch(e){} } }
 boot();
 </script>
 </body>

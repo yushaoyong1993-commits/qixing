@@ -8,6 +8,9 @@ import '../../theme/app_theme.dart';
 
 /// App 主壳：纯文字底部四 Tab（首页 / 地图 / 记录 / 我的）。
 /// 规范来源：首页 PRD v1.1 §10 —— 无图标、等宽分布、选中深橙加粗 + 短横线。
+///
+/// 采用 **懒加载 + 保活** 的 IndexedStack：访问过的页面保留 State，
+/// 这样从其它页面切回「地图」时 WebView 不会被重建（瓦片不会变白）。
 class RootShell extends StatefulWidget {
   const RootShell({super.key});
 
@@ -17,6 +20,7 @@ class RootShell extends StatefulWidget {
 
 class _RootShellState extends State<RootShell> {
   int _index = 0;
+  late final List<bool> _visited = [true, false, false, false];
 
   static const List<String> _tabs = ['首页', '地图', '记录', '我的'];
 
@@ -27,10 +31,23 @@ class _RootShellState extends State<RootShell> {
     MePage(),
   ];
 
+  void _go(int i) {
+    setState(() {
+      _index = i;
+      _visited[i] = true;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: _pages[_index],
+      body: IndexedStack(
+        index: _index,
+        children: [
+          for (var i = 0; i < _pages.length; i++)
+            _visited[i] ? _pages[i] : const SizedBox.shrink(),
+        ],
+      ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: AppTheme.bg,
@@ -41,8 +58,9 @@ class _RootShellState extends State<RootShell> {
           child: Row(
             children: [
               for (var i = 0; i < _tabs.length; i++)
-                Expanded(child: _TextTab(label: _tabs[i], selected: _index == i,
-                    onTap: () => setState(() => _index = i))),
+                Expanded(
+                    child: _TextTab(
+                        label: _tabs[i], selected: _index == i, onTap: () => _go(i))),
             ],
           ),
         ),

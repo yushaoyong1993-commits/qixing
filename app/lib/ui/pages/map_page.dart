@@ -122,7 +122,13 @@ class _MapPageState extends ConsumerState<MapPage> {
             child: AmapMapView(
               key: _mapKey,
               initialZoom: 14,
-              onReady: () => _mapKey.currentState?.render(myLoc: _myLoc),
+              onReady: () {
+                // WebView 就绪后再应用定位与刷新，避免瓦片因尺寸/时序问题不显示
+                _mapKey.currentState?.refresh();
+                _mapKey.currentState?.render(myLoc: _myLoc);
+                final l = _myLoc;
+                if (l != null) _mapKey.currentState?.moveTo(l[0], l[1]);
+              },
               onTapLngLat: (lng, lat) {},
               onError: (msg) {
                 if (!mounted) return;
@@ -150,8 +156,7 @@ class _MapPageState extends ConsumerState<MapPage> {
                       return ListTile(
                         leading: _RouteThumb(points: r.points),
                         title: Text(r.name, style: const TextStyle(fontSize: 14)),
-                        subtitle: Text(
-                            '${r.distKm.toStringAsFixed(1)} km · ${r.points.length} 点'),
+                        subtitle: Text('${r.distKm.toStringAsFixed(1)} km'),
                         trailing: IconButton(
                           icon: const Icon(Icons.delete_outline, color: AppTheme.txt3),
                           onPressed: () => _confirmDelete(context, ref, r),
@@ -520,7 +525,7 @@ class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
                     ),
                   ],
                 ),
-                Text('${path.length} 点 · ${km.toStringAsFixed(2)} km',
+                Text('${km.toStringAsFixed(2)} km',
                     style: const TextStyle(fontSize: 12, color: AppTheme.txt3)),
               ],
             ),
