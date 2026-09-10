@@ -21,6 +21,9 @@ class _MapPageState extends ConsumerState<MapPage> {
   static const _fallbackCenter = LatLng(39.908, 116.397); // 无定位时的默认视野
   final MapController _mapController = MapController();
   LatLng? _myLoc;
+  bool _mapReady = false;
+  bool _locating = false;
+  LatLng? _pendingMove;
   int _tileErrors = 0;
   bool _fellBack = false;
 
@@ -46,31 +49,55 @@ class _MapPageState extends ConsumerState<MapPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _locate(silent: true));
   }
 
+  void _moveTo(LatLng loc) {
+    if (_mapReady) {
+      try {
+        _mapController.move(loc, 16);
+      } catch (_) {}
+    } else {
+      _pendingMove = loc;
+    }
+  }
+
   Future<void> _locate({bool silent = false}) async {
+    if (mounted) setState(() => _locating = true);
+    void tip(String msg) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg, textAlign: TextAlign.center)),
+        );
+      }
+    }
+
     try {
+      final serviceOn = await Geolocator.isLocationServiceEnabled();
+      if (!serviceOn) {
+        tip('系统定位服务未开启，请在设置中打开"位置信息"');
+        await Geolocator.openLocationSettings();
+        return;
+      }
       var p = await Geolocator.checkPermission();
       if (p == LocationPermission.denied) p = await Geolocator.requestPermission();
       if (p == LocationPermission.denied || p == LocationPermission.deniedForever) {
-        if (!silent && mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('未授予定位权限，无法定位到当前位置', textAlign: TextAlign.center)),
-          );
-        }
+        tip('未授予定位权限，请在系统设置中允许"跋涉"使用位置');
+        await Geolocator.openAppSettings();
         return;
       }
       final pos = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 20),
+        ),
       );
       final loc = LatLng(pos.latitude, pos.longitude);
       if (!mounted) return;
       setState(() => _myLoc = loc);
-      _mapController.move(loc, 16);
-    } catch (_) {
-      if (!silent && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('定位失败，请到开阔处重试', textAlign: TextAlign.center)),
-        );
-      }
+      _moveTo(loc);
+      if (!silent) tip('已定位到当前位置');
+    } catch (e) {
+      tip('定位失败：$e');
+    } finally {
+      if (mounted) setState(() => _locating = false);
     }
   }
 
@@ -84,9 +111,12 @@ class _MapPageState extends ConsumerState<MapPage> {
         title: const Text('地图 · 路线'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.my_location),
+            icon: _locating
+                ? const SizedBox(
+                    width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.my_location),
             tooltip: '定位到当前位置',
-            onPressed: () => _locate(),
+            onPressed: _locating ? null : () => _locate(),
           ),
           IconButton(
             icon: const Icon(Icons.add),
@@ -125,7 +155,19 @@ class _MapPageState extends ConsumerState<MapPage> {
             height: 230,
             child: FlutterMap(
               mapController: _mapController,
-              options: const MapOptions(initialCenter: _fallbackCenter, initialZoom: 12),
+              options: MapOptions(
+                initialCenter: _fallbackCenter,
+                initialZoom: 12,
+                onMapReady: () {
+                  _mapReady = true;
+                  final p = _pendingMove;
+                  if (p != null) {
+                    try {
+                      _mapController.move(p, 16);
+                    } catch (_) {}
+                  }
+                },
+              ),
               children: [
                 ...tileLayersFor(src, onError: _onTileError),
                 if (_myLoc != null)
@@ -277,6 +319,8 @@ class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
   final MapController _mapController = MapController();
   static const _fallbackCenter = LatLng(39.908, 116.397);
   LatLng? _myLoc;
+  bool _mapReady = false;
+  LatLng? _pendingMove;
 
   @override
   void dispose() {
@@ -294,25 +338,48 @@ class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
   }
 
   Future<void> _goMyLocation() async {
+    void tip(String msg) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg, textAlign: TextAlign.center)),
+        );
+      }
+    }
+
     try {
+      final serviceOn = await Geolocator.isLocationServiceEnabled();
+      if (!serviceOn) {
+        tip('系统定位服务未开启');
+        await Geolocator.openLocationSettings();
+        return;
+      }
       var p = await Geolocator.checkPermission();
       if (p == LocationPermission.denied) p = await Geolocator.requestPermission();
       if (p == LocationPermission.denied || p == LocationPermission.deniedForever) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('未授予定位权限', textAlign: TextAlign.center)),
-          );
-        }
+        tip('未授予定位权限');
+        await Geolocator.openAppSettings();
         return;
       }
       final pos = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 20),
+        ),
       );
       final loc = LatLng(pos.latitude, pos.longitude);
       if (!mounted) return;
       setState(() => _myLoc = loc);
-      _mapController.move(loc, 16);
-    } catch (_) {}
+      if (_mapReady) {
+        try {
+          _mapController.move(loc, 16);
+        } catch (_) {}
+      } else {
+        _pendingMove = loc;
+      }
+      tip('已定位到当前位置');
+    } catch (e) {
+      tip('定位失败：$e');
+    }
   }
 
   Future<void> _save() async {
@@ -358,6 +425,15 @@ class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
                 initialCenter: _fallbackCenter,
                 initialZoom: 14,
                 onTap: (tapPos, latlng) => setState(() => _pts.add(latlng)),
+                onMapReady: () {
+                  _mapReady = true;
+                  final p = _pendingMove;
+                  if (p != null) {
+                    try {
+                      _mapController.move(p, 16);
+                    } catch (_) {}
+                  }
+                },
               ),
               children: [
                 ...tileLayersFor(src),
