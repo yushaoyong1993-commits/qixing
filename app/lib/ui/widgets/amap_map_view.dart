@@ -72,6 +72,7 @@ class AmapMapViewState extends State<AmapMapView> with WidgetsBindingObserver {
       switch (data['type']) {
         case 'ready':
           _ready = true;
+          _applyPending();
           widget.onReady?.call();
           break;
         case 'tap':
@@ -95,9 +96,21 @@ class AmapMapViewState extends State<AmapMapView> with WidgetsBindingObserver {
     _c.runJavaScript('renderMap($payload);');
   }
 
+  List<double>? _pendingCenter;
+
   void moveTo(double lng, double lat, {double zoom = 16}) {
-    if (!_ready) return;
+    if (!_ready) {
+      _pendingCenter = [lng, lat, zoom]; // 地图未就绪 → 排队，就绪后自动应用
+      return;
+    }
     _c.runJavaScript('moveTo($lng, $lat, $zoom);');
+  }
+
+  void _applyPending() {
+    final p = _pendingCenter;
+    if (p == null) return;
+    _pendingCenter = null;
+    _c.runJavaScript('moveTo(${p[0]}, ${p[1]}, ${p[2]});');
   }
 
   String _html() => '''

@@ -11,8 +11,9 @@ import '../widgets/amap_map_view.dart';
 
 /// 定位（GPS WGS84 → 高德 GCJ-02），供地图页与路线页共用。
 /// 返回 GCJ-02 的 [lng, lat]；失败返回 null（silent=true 时不弹提示）。
-Future<List<double>?> acquireGcjLocation(BuildContext context) async {
+Future<List<double>?> acquireGcjLocation(BuildContext context, {bool quiet = false}) async {
   void tip(String msg) {
+    if (quiet) return; // 自动定位静默，避免打扰
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(msg, textAlign: TextAlign.center)),
     );
@@ -32,7 +33,12 @@ Future<List<double>?> acquireGcjLocation(BuildContext context) async {
       await Geolocator.openAppSettings();
       return null;
     }
+    // 优先用"上次已知位置"（30 分钟内有效）→ 秒级定位
     Position? pos = await Geolocator.getLastKnownPosition();
+    if (pos != null &&
+        DateTime.now().difference(pos.timestamp).inMinutes > 30) {
+      pos = null; // 太旧，视为无效
+    }
     if (pos == null) {
       for (final acc in [LocationAccuracy.high, LocationAccuracy.medium]) {
         try {
@@ -76,12 +82,27 @@ class _MapPageState extends ConsumerState<MapPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _locate(silent: true));
   }
 
+  int _autoTries = 0;
+
   Future<void> _locate({bool silent = false}) async {
     if (mounted) setState(() => _locating = true);
-    final loc = await acquireGcjLocation(context);
+    final loc = await acquireGcjLocation(context, quiet: silent);
     if (!mounted) return;
     setState(() => _locating = false);
-    if (loc == null) return;
+    if (loc == null) {
+      // 自动定位失败 → 稍后自动重试一次（首次权限弹窗/取点超时常导致）
+      if (silent && _autoTries < 2) {
+        _autoTries++;
+        Future.delayed(const Duration(seconds: 6), () {
+          if (mounted && _myLoc == null) _locate(silent: true);
+        });
+      } else if (silent) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('自动定位未成功，可点右上角图标手动定位', textAlign: TextAlign.center),
+        ));
+      }
+      return;
+    }
     setState(() => _myLoc = loc);
     _mapKey.currentState?.moveTo(loc[0], loc[1]);
     _mapKey.currentState?.render(myLoc: loc);
@@ -348,9 +369,20 @@ class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
     _mapKey.currentState?.moveTo((minLon + maxLon) / 2, (minLat + maxLat) / 2, zoom: 14);
   }
 
+  int _autoTries = 0;
+
   Future<void> _locate({bool silent = false}) async {
-    final loc = await acquireGcjLocation(context);
-    if (!mounted || loc == null) return;
+    final loc = await acquireGcjLocation(context, quiet: silent);
+    if (!mounted) return;
+    if (loc == null) {
+      if (silent && _autoTries < 2) {
+        _autoTries++;
+        Future.delayed(const Duration(seconds: 6), () {
+          if (mounted && _myLoc == null) _locate(silent: true);
+        });
+      }
+      return;
+    }
     setState(() => _myLoc = loc);
     _mapKey.currentState?.moveTo(loc[0], loc[1]);
     _render();
