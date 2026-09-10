@@ -9,6 +9,28 @@ import '../../data/route_repository.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/map_tiles.dart';
 
+Future<LatLng?> _lastKnownLatLng() async {
+  try {
+    final p = await Geolocator.getLastKnownPosition();
+    return p == null ? null : LatLng(p.latitude, p.longitude);
+  } catch (_) {
+    return null;
+  }
+}
+
+/// 分级获取当前位置：高精度 → 中精度（室内/仅大致位置时 medium 更易成功）
+Future<Position?> _acquirePosition() async {
+  for (final acc in [LocationAccuracy.high, LocationAccuracy.medium]) {
+    try {
+      return await Geolocator.getCurrentPosition(
+        locationSettings:
+            LocationSettings(accuracy: acc, timeLimit: const Duration(seconds: 25)),
+      );
+    } catch (_) {}
+  }
+  return null;
+}
+
 /// 地图 · 路线：真实瓦片地图（天地图/Esri/OSM/高德可切换）+ 实时定位 + 我的路线。
 class MapPage extends ConsumerStatefulWidget {
   const MapPage({super.key});
@@ -62,7 +84,7 @@ class _MapPageState extends ConsumerState<MapPage> {
   Future<void> _locate({bool silent = false}) async {
     if (mounted) setState(() => _locating = true);
     void tip(String msg) {
-      if (mounted) {
+      if (!silent && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(msg, textAlign: TextAlign.center)),
         );
@@ -83,17 +105,28 @@ class _MapPageState extends ConsumerState<MapPage> {
         await Geolocator.openAppSettings();
         return;
       }
-      final pos = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 20),
-        ),
-      );
-      final loc = LatLng(pos.latitude, pos.longitude);
-      if (!mounted) return;
-      setState(() => _myLoc = loc);
-      _moveTo(loc);
-      if (!silent) tip('已定位到当前位置');
+
+      // ① 上次已知位置：室内/刚开机也常有值，先快速定位
+      var loc = await _lastKnownLatLng();
+      if (loc != null) {
+        if (!mounted) return;
+        setState(() => _myLoc = loc);
+        _moveTo(loc);
+      }
+
+      // ② 再分级取精确位置
+      final precise = await _acquirePosition();
+      if (precise != null) {
+        final l = LatLng(precise.latitude, precise.longitude);
+        if (!mounted) return;
+        setState(() => _myLoc = l);
+        _moveTo(l);
+        tip('已定位到当前位置');
+      } else if (loc == null) {
+        tip('定位超时：室内信号弱，或系统只允许"大致位置"。请到室外/窗边，或在设置里允许"精确位置"');
+      } else {
+        tip('已定位到上次已知位置（精确位置获取超时）');
+      }
     } catch (e) {
       tip('定位失败：$e');
     } finally {
@@ -360,23 +393,35 @@ class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
         await Geolocator.openAppSettings();
         return;
       }
-      final pos = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 20),
-        ),
-      );
-      final loc = LatLng(pos.latitude, pos.longitude);
-      if (!mounted) return;
-      setState(() => _myLoc = loc);
-      if (_mapReady) {
-        try {
-          _mapController.move(loc, 16);
-        } catch (_) {}
-      } else {
-        _pendingMove = loc;
+      var loc = await _lastKnownLatLng();
+      if (loc != null && mounted) {
+        setState(() => _myLoc = loc);
+        if (_mapReady) {
+          try {
+            _mapController.move(loc, 16);
+          } catch (_) {}
+        } else {
+          _pendingMove = loc;
+        }
       }
-      tip('已定位到当前位置');
+      final precise = await _acquirePosition();
+      if (precise != null) {
+        final l = LatLng(precise.latitude, precise.longitude);
+        if (!mounted) return;
+        setState(() => _myLoc = l);
+        if (_mapReady) {
+          try {
+            _mapController.move(l, 16);
+          } catch (_) {}
+        } else {
+          _pendingMove = l;
+        }
+        tip('已定位到当前位置');
+      } else if (loc == null) {
+        tip('定位超时：请到室外/窗边，或允许"精确位置"');
+      } else {
+        tip('已定位到上次已知位置');
+      }
     } catch (e) {
       tip('定位失败：$e');
     }
