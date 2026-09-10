@@ -9,7 +9,54 @@ import '../../data/route_repository.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/amap_map_view.dart';
 
-/// 地图 · 路线：**全高德**（WebView 高德 JS 地图底图 + 高德骑行规划，坐标全程 GCJ-02，零转换）
+/// 定位（GPS WGS84 → 高德 GCJ-02），供地图页与路线页共用。
+/// 返回 GCJ-02 的 [lng, lat]；失败返回 null（silent=true 时不弹提示）。
+Future<List<double>?> acquireGcjLocation(BuildContext context) async {
+  void tip(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg, textAlign: TextAlign.center)),
+    );
+  }
+
+  try {
+    final on = await Geolocator.isLocationServiceEnabled();
+    if (!on) {
+      tip('系统定位服务未开启');
+      await Geolocator.openLocationSettings();
+      return null;
+    }
+    var p = await Geolocator.checkPermission();
+    if (p == LocationPermission.denied) p = await Geolocator.requestPermission();
+    if (p == LocationPermission.denied || p == LocationPermission.deniedForever) {
+      tip('未授予定位权限，请在系统设置中允许"跋涉"使用位置');
+      await Geolocator.openAppSettings();
+      return null;
+    }
+    Position? pos = await Geolocator.getLastKnownPosition();
+    if (pos == null) {
+      for (final acc in [LocationAccuracy.high, LocationAccuracy.medium]) {
+        try {
+          pos = await Geolocator.getCurrentPosition(
+            locationSettings:
+                LocationSettings(accuracy: acc, timeLimit: const Duration(seconds: 20)),
+          );
+          break;
+        } catch (_) {}
+      }
+    }
+    if (pos == null) {
+      tip('定位超时：请到室外/窗边，或允许"精确位置"');
+      return null;
+    }
+    final g = wgs84ToGcj02(LatLng(pos.latitude, pos.longitude));
+    return [g.longitude, g.latitude];
+  } catch (e) {
+    tip('定位失败：$e');
+    return null;
+  }
+}
+
+/// 地图 · 路线：全高德（WebView 高德 JS 地图 + 高德骑行规划，坐标全程 GCJ-02）
 class MapPage extends ConsumerStatefulWidget {
   const MapPage({super.key});
 
@@ -19,71 +66,30 @@ class MapPage extends ConsumerStatefulWidget {
 
 class _MapPageState extends ConsumerState<MapPage> {
   final GlobalKey<AmapMapViewState> _mapKey = GlobalKey<AmapMapViewState>();
-  List<double>? _myLoc; // GCJ-02 [lng, lat]
+  List<double>? _myLoc;
   bool _locating = false;
 
-  Future<void> _locate() async {
+  @override
+  void initState() {
+    super.initState();
+    // ① 进入地图页自动定位一次
+    WidgetsBinding.instance.addPostFrameCallback((_) => _locate(silent: true));
+  }
+
+  Future<void> _locate({bool silent = false}) async {
     if (mounted) setState(() => _locating = true);
-    void tip(String msg) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(msg, textAlign: TextAlign.center)),
-        );
-      }
-    }
-
-    try {
-      final on = await Geolocator.isLocationServiceEnabled();
-      if (!on) {
-        tip('系统定位服务未开启');
-        await Geolocator.openLocationSettings();
-        return;
-      }
-      var p = await Geolocator.checkPermission();
-      if (p == LocationPermission.denied) p = await Geolocator.requestPermission();
-      if (p == LocationPermission.denied || p == LocationPermission.deniedForever) {
-        tip('未授予定位权限，请在系统设置中允许"跋涉"使用位置');
-        await Geolocator.openAppSettings();
-        return;
-      }
-      Position? pos = await Geolocator.getLastKnownPosition();
-      pos ??= await _tryCurrent();
-      if (pos == null) {
-        tip('定位超时：请到室外/窗边，或允许"精确位置"');
-        return;
-      }
-      // GPS(WGS84) → 高德(GCJ-02)，才能对齐高德底图
-      final g = wgs84ToGcj02(LatLng(pos.latitude, pos.longitude));
-      final loc = [g.longitude, g.latitude];
-      if (!mounted) return;
-      setState(() => _myLoc = loc);
-      _mapKey.currentState?.moveTo(loc[0], loc[1]);
-      _mapKey.currentState?.render(myLoc: loc);
-      tip('已定位到当前位置');
-    } catch (e) {
-      tip('定位失败：$e');
-    } finally {
-      if (mounted) setState(() => _locating = false);
-    }
-  }
-
-  Future<Position?> _tryCurrent() async {
-    for (final acc in [LocationAccuracy.high, LocationAccuracy.medium]) {
-      try {
-        return await Geolocator.getCurrentPosition(
-          locationSettings:
-              LocationSettings(accuracy: acc, timeLimit: const Duration(seconds: 20)),
-        );
-      } catch (_) {}
-    }
-    return null;
-  }
-
-  void _onMapError(String msg) {
+    final loc = await acquireGcjLocation(context);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg, textAlign: TextAlign.center)),
-    );
+    setState(() => _locating = false);
+    if (loc == null) return;
+    setState(() => _myLoc = loc);
+    _mapKey.currentState?.moveTo(loc[0], loc[1]);
+    _mapKey.currentState?.render(myLoc: loc);
+    if (!silent) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('已定位到当前位置', textAlign: TextAlign.center)),
+      );
+    }
   }
 
   @override
@@ -99,13 +105,13 @@ class _MapPageState extends ConsumerState<MapPage> {
                     width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.my_location),
             tooltip: '定位到当前位置',
-            onPressed: _locating ? null : _locate,
+            onPressed: _locating ? null : () => _locate(),
           ),
           IconButton(
             icon: const Icon(Icons.add),
-            tooltip: '在地图上手绘路线',
-            onPressed: () =>
-                Navigator.of(context).push(MaterialPageRoute(builder: (_) => const RouteEditorPage())),
+            tooltip: '定制路线',
+            onPressed: () => Navigator.of(context)
+                .push(MaterialPageRoute(builder: (_) => const RouteEditorPage())),
           ),
         ],
       ),
@@ -117,8 +123,12 @@ class _MapPageState extends ConsumerState<MapPage> {
               key: _mapKey,
               initialZoom: 14,
               onReady: () => _mapKey.currentState?.render(myLoc: _myLoc),
-              onTapLngLat: (lng, lat) {}, // 首页地图只看，不落点
-              onError: _onMapError,
+              onTapLngLat: (lng, lat) {},
+              onError: (msg) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context)
+                    .showSnackBar(SnackBar(content: Text(msg, textAlign: TextAlign.center)));
+              },
             ),
           ),
           const Padding(
@@ -129,7 +139,7 @@ class _MapPageState extends ConsumerState<MapPage> {
           Expanded(
             child: routes.isEmpty
                 ? const Center(
-                    child: Text('还没有路线，点右上角 ＋ 在地图上手绘一条',
+                    child: Text('还没有路线，点右上角 ＋ 定制一条',
                         style: TextStyle(color: AppTheme.txt3)))
                 : ListView.separated(
                     padding: const EdgeInsets.all(12),
@@ -145,6 +155,10 @@ class _MapPageState extends ConsumerState<MapPage> {
                         trailing: IconButton(
                           icon: const Icon(Icons.delete_outline, color: AppTheme.txt3),
                           onPressed: () => _confirmDelete(context, ref, r),
+                        ),
+                        // ⑤ 点击已保存路线 → 查看/编辑（改名、继续绘制）
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => RouteEditorPage(editRoute: r)),
                         ),
                       );
                     },
@@ -238,9 +252,12 @@ class _BoundsLinePainter extends CustomPainter {
   bool shouldRepaint(covariant _BoundsLinePainter old) => old.points != points;
 }
 
-/// 手绘路线（全高德）：点击地图 → 高德骑行规划 → 路径直接画在高德底图上（同坐标系，绝对对齐）。
+/// 定制/编辑路线（全高德）：点按地图 → 高德骑行规划 → 路径画在高德底图上（同坐标系，绝对对齐）。
+/// [editRoute] 非空时为"编辑已保存路线"（可改名、可继续在其后追加）。
 class RouteEditorPage extends ConsumerStatefulWidget {
-  const RouteEditorPage({super.key});
+  const RouteEditorPage({super.key, this.editRoute});
+
+  final RouteModel? editRoute;
 
   @override
   ConsumerState<RouteEditorPage> createState() => _RouteEditorPageState();
@@ -249,13 +266,35 @@ class RouteEditorPage extends ConsumerStatefulWidget {
 class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
   final GlobalKey<AmapMapViewState> _mapKey = GlobalKey<AmapMapViewState>();
   final RoutePlanner _planner = RoutePlanner();
-  final _name = TextEditingController(text: '我的路线');
+  late final TextEditingController _name;
 
-  final List<List<double>> _anchors = []; // GCJ-02 [lng, lat]
-  final List<List<double>> _path = []; // GCJ-02 路径点
+  /// 分段路径：每段为 GCJ-02 的 [[lng, lat], ...]，段首尾相接。
+  final List<List<List<double>>> _segs = [];
   List<double>? _myLoc;
   bool _planning = false;
   double _distM = 0;
+  /// 编辑已有路线时，原始段数量（不可被"撤销"删掉）
+  int _baseSegs = 0;
+
+  bool get _isEdit => widget.editRoute != null;
+
+  @override
+  void initState() {
+    super.initState();
+    _name = TextEditingController(text: widget.editRoute?.name ?? '我的路线');
+    final r = widget.editRoute;
+    if (r != null && r.points.length >= 2) {
+      // 已保存路线作为基础段：整条 path（GCJ-02），后续点击从末端继续规划
+      _segs.add([for (final p in r.points) [p[1], p[0]]]);
+      _baseSegs = 1;
+      _distM = r.distKm * 1000;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      _render();
+      // ① 进入页面自动定位一次
+      await _locate(silent: true);
+    });
+  }
 
   @override
   void dispose() {
@@ -264,33 +303,82 @@ class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
     super.dispose();
   }
 
-  void _render() =>
-      _mapKey.currentState?.render(anchors: _anchors, path: _path, myLoc: _myLoc);
+  /// 由分段重建完整路径
+  List<List<double>> _buildPath() {
+    if (_segs.isEmpty) return [];
+    final out = <List<double>>[..._segs.first];
+    for (final seg in _segs.skip(1)) {
+      out.addAll(seg.skip(1));
+    }
+    return out;
+  }
+
+  /// 锚点 = 每段起点 + 最后一段终点
+  List<List<double>> _buildAnchors() {
+    if (_segs.isEmpty) return [];
+    final a = <List<double>>[
+      for (final seg in _segs) seg.first,
+    ];
+    a.add(_segs.last.last);
+    return a;
+  }
+
+  void _render() => _mapKey.currentState?.render(
+        anchors: _buildAnchors(),
+        path: _buildPath(),
+        myLoc: _myLoc,
+      );
+
+  /// 中心定位到当前路线
+  void _centerOnRoute() {
+    final p = _buildPath();
+    if (p.isEmpty) return;
+    double minLat = p.first[1], maxLat = minLat, minLon = p.first[0], maxLon = minLon;
+    for (final q in p) {
+      if (q[1] < minLat) minLat = q[1];
+      if (q[1] > maxLat) maxLat = q[1];
+      if (q[0] < minLon) minLon = q[0];
+      if (q[0] > maxLon) maxLon = q[0];
+    }
+    _mapKey.currentState?.moveTo((minLon + maxLon) / 2, (minLat + maxLat) / 2, zoom: 14);
+  }
+
+  Future<void> _locate({bool silent = false}) async {
+    final loc = await acquireGcjLocation(context);
+    if (!mounted || loc == null) return;
+    setState(() => _myLoc = loc);
+    _mapKey.currentState?.moveTo(loc[0], loc[1]);
+    _render();
+    if (!silent) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('已定位到当前位置', textAlign: TextAlign.center)),
+      );
+    }
+  }
 
   Future<void> _onTap(double lng, double lat) async {
     if (_planning) return;
     final p = [lng, lat];
-    if (_anchors.isEmpty) {
-      setState(() {
-        _anchors.add(p);
-        _path.add(p);
-      });
+    // 首个点（新建时）
+    if (_segs.isEmpty) {
+      setState(() => _segs.add([p]));
       _render();
       return;
     }
-    final prev = _anchors.last;
-    _anchors.add(p);
+    final prev = _segs.last.last;
     setState(() => _planning = true);
     final r = await _planner.planRidingGcj(LatLng(prev[1], prev[0]), LatLng(lat, lng));
     if (!mounted) return;
     setState(() {
       if (r != null) {
+        final seg = <List<double>>[prev];
         for (final q in r.points.skip(1)) {
-          _path.add([q.longitude, q.latitude]);
+          seg.add([q.longitude, q.latitude]);
         }
+        _segs.add(seg);
         _distM += r.distanceM;
       } else {
-        _path.add(p); // 规划失败 → 直线
+        _segs.add([prev, p]); // 规划失败 → 直线
       }
       _planning = false;
     });
@@ -303,96 +391,81 @@ class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
     }
   }
 
-  /// 撤销上一个锚点（连同该段路径）
+  /// ③ 撤销：只回退最后一段（保留已完成的道路轨迹），编辑模式下不动原始路径
   void _undo() {
-    if (_anchors.isEmpty || _planning) return;
+    if (_planning || _segs.length <= _baseSegs) return;
     setState(() {
-      _anchors.removeLast();
-      _path.clear();
-      _distM = 0;
-      for (var i = 0; i < _anchors.length; i++) {
-        _path.add(_anchors[i]);
+      _segs.removeLast();
+      _distM = _recalcDist();
+    });
+    _render();
+  }
+
+  /// ④ 清空：编辑模式下清掉新增段（保留原始），新建模式全清
+  void _clear() {
+    if (_planning) return;
+    setState(() {
+      if (_baseSegs > 0) {
+        while (_segs.length > _baseSegs) {
+          _segs.removeLast();
+        }
+        _distM = _recalcDist();
+      } else {
+        _segs.clear();
+        _distM = 0;
       }
     });
     _render();
   }
 
-  Future<void> _goMyLocation() async {
-    void tip(String m) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(m, textAlign: TextAlign.center)),
-        );
+  double _recalcDist() {
+    var m = 0.0;
+    const d = Distance();
+    for (final seg in _segs) {
+      for (var i = 1; i < seg.length; i++) {
+        m += d.as(LengthUnit.Meter,
+            LatLng(seg[i - 1][1], seg[i - 1][0]), LatLng(seg[i][1], seg[i][0]));
       }
     }
-
-    try {
-      final on = await Geolocator.isLocationServiceEnabled();
-      if (!on) {
-        tip('系统定位服务未开启');
-        await Geolocator.openLocationSettings();
-        return;
-      }
-      var p = await Geolocator.checkPermission();
-      if (p == LocationPermission.denied) p = await Geolocator.requestPermission();
-      if (p == LocationPermission.denied || p == LocationPermission.deniedForever) {
-        tip('未授予定位权限');
-        await Geolocator.openAppSettings();
-        return;
-      }
-      Position? pos = await Geolocator.getLastKnownPosition();
-      pos ??= await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 20),
-        ),
-      );
-      final g = wgs84ToGcj02(LatLng(pos.latitude, pos.longitude));
-      final loc = [g.longitude, g.latitude];
-      if (!mounted) return;
-      setState(() => _myLoc = loc);
-      _mapKey.currentState?.moveTo(loc[0], loc[1]);
-      _render();
-      tip('已定位到当前位置');
-    } catch (e) {
-      tip('定位失败：$e');
-    }
+    return m;
   }
 
   Future<void> _save() async {
-    if (_path.length < 2) return;
-    final pts = _path.map((p) => [p[1], p[0]]).toList(); // → [lat, lng]（GCJ-02）
-    final km = _distM > 0 ? _distM / 1000 : _haversineKm(_path);
-    await ref.read(routeRepositoryProvider).addRoute(
-          name: _name.text.trim().isEmpty ? '我的路线' : _name.text.trim(),
-          points: pts,
-          distKm: km,
-        );
+    final path = _buildPath();
+    if (path.length < 2) return;
+    final pts = path.map((p) => [p[1], p[0]]).toList(); // → [lat, lng]（GCJ-02）
+    final km = (_distM > 0 ? _distM : _recalcDist()) / 1000;
+    final repo = ref.read(routeRepositoryProvider);
+    final name = _name.text.trim().isEmpty ? '我的路线' : _name.text.trim();
+    if (_isEdit) {
+      await repo.updateRoute(id: widget.editRoute!.id, name: name, points: pts, distKm: km);
+    } else {
+      await repo.addRoute(name: name, points: pts, distKm: km);
+    }
     if (!mounted) return;
     Navigator.pop(context);
   }
 
-  double _haversineKm(List<List<double>> pts) {
-    var m = 0.0;
-    const d = Distance();
-    for (var i = 1; i < pts.length; i++) {
-      m += d.as(LengthUnit.Meter,
-          LatLng(pts[i - 1][1], pts[i - 1][0]), LatLng(pts[i][1], pts[i][0]));
-    }
-    return m / 1000;
-  }
-
   @override
   Widget build(BuildContext context) {
+    final path = _buildPath();
+    final km = (_distM > 0 ? _distM : _recalcDist()) / 1000;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('手绘路线（高德地图）'),
+        // ② 标题：定制路线 / 编辑路线
+        title: Text(_isEdit ? '编辑路线' : '定制路线'),
         actions: [
           IconButton(
             icon: const Icon(Icons.my_location),
             tooltip: '定位到当前位置',
-            onPressed: _goMyLocation,
+            onPressed: () => _locate(),
           ),
+          if (path.length > 1)
+            IconButton(
+              icon: const Icon(Icons.center_focus_strong),
+              tooltip: '居中显示整条路线',
+              onPressed: _centerOnRoute,
+            ),
           TextButton(onPressed: _save, child: const Text('保存')),
         ],
       ),
@@ -410,12 +483,14 @@ class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
               key: _mapKey,
               initialZoom: 15,
               onTapLngLat: _onTap,
-              onReady: _render,
+              onReady: () {
+                _render();
+                _centerOnRoute();
+              },
               onError: (msg) {
                 if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(msg, textAlign: TextAlign.center)),
-                );
+                ScaffoldMessenger.of(context)
+                    .showSnackBar(SnackBar(content: Text(msg, textAlign: TextAlign.center)));
               },
             ),
           ),
@@ -433,28 +508,26 @@ class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
                 Row(
                   children: [
                     TextButton.icon(
-                      onPressed: _anchors.isEmpty || _planning ? null : _undo,
+                      onPressed: _segs.length <= _baseSegs || _planning ? null : _undo,
                       icon: const Icon(Icons.undo, size: 18),
                       label: const Text('撤销上一点'),
                     ),
                     TextButton(
-                        onPressed: () => setState(() {
-                              _anchors.clear();
-                              _path.clear();
-                              _distM = 0;
-                            }),
-                        child: const Text('清空')),
+                      onPressed: (_segs.length <= _baseSegs && _baseSegs > 0) || _planning
+                          ? null
+                          : _clear,
+                      child: const Text('清空'),
+                    ),
                   ],
                 ),
-                Text(
-                    '锚点 ${_anchors.length} · ${(_distM > 0 ? _distM / 1000 : _haversineKm(_path)).toStringAsFixed(2)} km',
+                Text('${path.length} 点 · ${km.toStringAsFixed(2)} km',
                     style: const TextStyle(fontSize: 12, color: AppTheme.txt3)),
               ],
             ),
           ),
           const Padding(
             padding: EdgeInsets.only(bottom: 10),
-            child: Text('点两下：A→B 自动按高德骑行路线生成带拐弯的路径（与高德底图同坐标系，绝对对齐）',
+            child: Text('点两下：A→B 自动按高德骑行路线生成带拐弯的路径（与底图同坐标系）',
                 style: TextStyle(fontSize: 11.5, color: AppTheme.txt3)),
           ),
         ],

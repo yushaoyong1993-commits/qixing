@@ -14,7 +14,7 @@ class RouteModel {
 
   final int id;
   final String name;
-  /// 归一化坐标点（x:0-100, y:0-100），用于统一渲染/估算距离。
+  /// 路线点：[lat, lng]（全高德方案下为 GCJ-02 经纬度）。
   final List<List<double>> points;
   final double distKm;
   final DateTime createdAt;
@@ -45,6 +45,21 @@ class RouteRepository {
         ));
   }
 
+  Future<void> updateRoute({
+    required int id,
+    required String name,
+    required List<List<double>> points,
+    required double distKm,
+  }) {
+    return (_db.update(_db.routes)..where((t) => t.id.equals(id))).write(
+      RoutesCompanion(
+        name: Value(name),
+        pointsJson: Value(_encode(points)),
+        distKm: Value(distKm),
+      ),
+    );
+  }
+
   Future<void> deleteRoute(int id) {
     return (_db.delete(_db.routes)..where((t) => t.id.equals(id))).go();
   }
@@ -58,7 +73,7 @@ class RouteRepository {
       );
 
   static String _encode(List<List<double>> pts) =>
-      pts.map((p) => '${p[0].toStringAsFixed(1)},${p[1].toStringAsFixed(1)}').join(';');
+      pts.map((p) => '${p[0].toStringAsFixed(6)},${p[1].toStringAsFixed(6)}').join(';');
 
   static List<List<double>> _decode(String s) => s
       .split(';')
