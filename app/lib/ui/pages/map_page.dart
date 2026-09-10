@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart' show LatLng, Distance, LengthUnit;
 
 import '../../data/providers.dart';
@@ -8,20 +9,67 @@ import '../../data/route_repository.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/map_tiles.dart';
 
-/// 地图 · 路线：真实高德瓦片地图 + 我的路线（经纬度存储）+ 在真地图上手绘。
-class MapPage extends ConsumerWidget {
+/// 地图 · 路线：真实瓦片地图（天地图/Esri/OSM/高德可切换）+ 实时定位 + 我的路线。
+class MapPage extends ConsumerStatefulWidget {
   const MapPage({super.key});
 
-  static const _homeCenter = LatLng(39.908, 116.397); // 默认视野（北京）
+  @override
+  ConsumerState<MapPage> createState() => _MapPageState();
+}
+
+class _MapPageState extends ConsumerState<MapPage> {
+  static const _fallbackCenter = LatLng(39.908, 116.397); // 无定位时的默认视野
+  final MapController _mapController = MapController();
+  LatLng? _myLoc;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _locate(silent: true));
+  }
+
+  Future<void> _locate({bool silent = false}) async {
+    try {
+      var p = await Geolocator.checkPermission();
+      if (p == LocationPermission.denied) p = await Geolocator.requestPermission();
+      if (p == LocationPermission.denied || p == LocationPermission.deniedForever) {
+        if (!silent && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('未授予定位权限，无法定位到当前位置', textAlign: TextAlign.center)),
+          );
+        }
+        return;
+      }
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+      );
+      final loc = LatLng(pos.latitude, pos.longitude);
+      if (!mounted) return;
+      setState(() => _myLoc = loc);
+      _mapController.move(loc, 16);
+    } catch (_) {
+      if (!silent && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('定位失败，请到开阔处重试', textAlign: TextAlign.center)),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final routes = ref.watch(routesProvider).valueOrNull ?? const <RouteModel>[];
-    final tileSrc = ref.watch(mapTileSourceProvider);
+    final src = ref.watch(mapTileSourceProvider);
+    final needToken = src == MapTileSource.tianditu && kTiandituToken.trim().isEmpty;
     return Scaffold(
       appBar: AppBar(
         title: const Text('地图 · 路线'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.my_location),
+            tooltip: '定位到当前位置',
+            onPressed: () => _locate(),
+          ),
           IconButton(
             icon: const Icon(Icons.add),
             tooltip: '在地图上手绘路线',
@@ -32,38 +80,57 @@ class MapPage extends ConsumerWidget {
       ),
       body: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             child: Row(
               children: [
-                Expanded(
-                  child: SegmentedButton<MapTileSource>(
-                    showSelectedIcon: false,
-                    segments: [
-                      for (final s in MapTileSource.values)
-                        ButtonSegment(
-                            value: s,
-                            label: Text(tileSourceLabel(s),
-                                style: const TextStyle(fontSize: 12))),
-                    ],
-                    selected: {tileSrc},
-                    onSelectionChanged: (v) =>
-                        ref.read(mapTileSourceProvider.notifier).state = v.first,
+                for (final s in MapTileSource.values)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: ChoiceChip(
+                      label: Text(tileSourceLabel(s), style: const TextStyle(fontSize: 12)),
+                      selected: src == s,
+                      onSelected: (_) => ref.read(mapTileSourceProvider.notifier).state = s,
+                    ),
                   ),
-                ),
               ],
             ),
           ),
+          if (needToken)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 4),
+              child: Text('未配置天地图 tk，暂用 Esri 显示',
+                  style: TextStyle(fontSize: 11, color: AppTheme.warn)),
+            ),
           SizedBox(
             height: 230,
             child: FlutterMap(
-              options: const MapOptions(initialCenter: _homeCenter, initialZoom: 12),
-              children: [tileLayerFor(tileSrc)],
+              mapController: _mapController,
+              options: const MapOptions(initialCenter: _fallbackCenter, initialZoom: 12),
+              children: [
+                ...tileLayersFor(src),
+                if (_myLoc != null)
+                  MarkerLayer(markers: [
+                    Marker(
+                      point: _myLoc!,
+                      width: 20,
+                      height: 20,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: const Color(0xFF2F80ED),
+                          border: Border.all(color: Colors.white, width: 3),
+                        ),
+                      ),
+                    ),
+                  ]),
+              ],
             ),
           ),
           const Padding(
             padding: EdgeInsets.only(top: 8, left: 4),
-            child: Text('高德路网地图 · 可拖动/双指缩放',
+            child: Text('可拖动/双指缩放 · 右上角图标定位到当前位置',
                 style: TextStyle(fontSize: 11, color: AppTheme.txt3)),
           ),
           Expanded(
@@ -178,7 +245,7 @@ class _BoundsLinePainter extends CustomPainter {
   bool shouldRepaint(covariant _BoundsLinePainter old) => old.points != points;
 }
 
-/// 手绘路线：在真实高德地图上点按打点，保存真实经纬度。
+/// 手绘路线：在真实地图上点按打点，可定位到当前位置，保存真实经纬度。
 class RouteEditorPage extends ConsumerStatefulWidget {
   const RouteEditorPage({super.key});
 
@@ -189,7 +256,9 @@ class RouteEditorPage extends ConsumerStatefulWidget {
 class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
   final List<LatLng> _pts = [];
   final _name = TextEditingController(text: '我的路线');
-  static const _center = LatLng(39.908, 116.397);
+  final MapController _mapController = MapController();
+  static const _fallbackCenter = LatLng(39.908, 116.397);
+  LatLng? _myLoc;
 
   @override
   void dispose() {
@@ -206,6 +275,28 @@ class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
     return m / 1000;
   }
 
+  Future<void> _goMyLocation() async {
+    try {
+      var p = await Geolocator.checkPermission();
+      if (p == LocationPermission.denied) p = await Geolocator.requestPermission();
+      if (p == LocationPermission.denied || p == LocationPermission.deniedForever) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('未授予定位权限', textAlign: TextAlign.center)),
+          );
+        }
+        return;
+      }
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+      );
+      final loc = LatLng(pos.latitude, pos.longitude);
+      if (!mounted) return;
+      setState(() => _myLoc = loc);
+      _mapController.move(loc, 16);
+    } catch (_) {}
+  }
+
   Future<void> _save() async {
     if (_pts.length < 2) return;
     final pts = _pts.map((p) => [p.latitude, p.longitude]).toList();
@@ -220,10 +311,18 @@ class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
 
   @override
   Widget build(BuildContext context) {
+    final src = ref.watch(mapTileSourceProvider);
     return Scaffold(
       appBar: AppBar(
         title: const Text('手绘路线（真地图）'),
-        actions: [TextButton(onPressed: _save, child: const Text('保存'))],
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.my_location),
+            tooltip: '定位到当前位置',
+            onPressed: _goMyLocation,
+          ),
+          TextButton(onPressed: _save, child: const Text('保存')),
+        ],
       ),
       body: Column(
         children: [
@@ -236,13 +335,29 @@ class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
           ),
           Expanded(
             child: FlutterMap(
+              mapController: _mapController,
               options: MapOptions(
-                initialCenter: _center,
+                initialCenter: _fallbackCenter,
                 initialZoom: 14,
                 onTap: (tapPos, latlng) => setState(() => _pts.add(latlng)),
               ),
               children: [
-                tileLayerFor(ref.watch(mapTileSourceProvider)),
+                ...tileLayersFor(src),
+                if (_myLoc != null)
+                  MarkerLayer(markers: [
+                    Marker(
+                      point: _myLoc!,
+                      width: 20,
+                      height: 20,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: const Color(0xFF2F80ED),
+                          border: Border.all(color: Colors.white, width: 3),
+                        ),
+                      ),
+                    ),
+                  ]),
                 if (_pts.length > 1)
                   PolylineLayer(polylines: [
                     Polyline(points: _pts, strokeWidth: 4, color: AppTheme.accent),
@@ -278,7 +393,7 @@ class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
           ),
           const Padding(
             padding: EdgeInsets.only(bottom: 10),
-            child: Text('在地图上点按打点，连成路线后保存',
+            child: Text('在地图上点按打点，连成路线后保存 · 右上角可定位',
                 style: TextStyle(fontSize: 11.5, color: AppTheme.txt3)),
           ),
         ],
