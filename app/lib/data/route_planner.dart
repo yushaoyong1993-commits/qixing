@@ -71,9 +71,12 @@ class RoutePlanner {
   /// 高德骑行规划 v4（bicycling 接口；v3 无骑行）。返回 GCJ-02 → 转 WGS84 对齐天地图/OSM
   Future<List<LatLng>?> _amapRiding(LatLng a, LatLng b) async {
     try {
+      // 高德要求 GCJ-02：把地图点(WGS84)转过去，返回后再转回来，避免整体错位
+      final ga = wgs84ToGcj02(a);
+      final gb = wgs84ToGcj02(b);
       final uri = Uri.https('restapi.amap.com', '/v4/direction/bicycling', {
-        'origin': '${a.longitude},${a.latitude}',
-        'destination': '${b.longitude},${b.latitude}',
+        'origin': '${ga.longitude},${ga.latitude}',
+        'destination': '${gb.longitude},${gb.latitude}',
         'key': kAmapWebServiceKey,
       });
       final res = await _c.get(uri).timeout(const Duration(seconds: 12));
@@ -162,6 +165,19 @@ double _transformLng(double x, double y) {
   ret += (20.0 * math.sin(y) + 40.0 * math.sin(y / 3.0)) * 2.0 / 3.0;
   ret += (150.0 * math.sin(x / 12.0) + 300.0 * math.sin(x / 30.0)) * 2.0 / 3.0;
   return ret;
+}
+
+LatLng wgs84ToGcj02(LatLng w) {
+  if (_outOfChina(w.latitude, w.longitude)) return w;
+  final dLat0 = _transformLat(w.longitude - 105.0, w.latitude - 35.0);
+  final dLng0 = _transformLng(w.longitude - 105.0, w.latitude - 35.0);
+  final radLat = w.latitude / 180.0 * _pi;
+  var magic = math.sin(radLat);
+  magic = 1 - _ee * magic * magic;
+  final sqrtMagic = math.sqrt(magic);
+  final dLat = (dLat0 * 180.0) / ((_a * (1 - _ee)) / (magic * sqrtMagic) * _pi);
+  final dLng = (dLng0 * 180.0) / (_a / sqrtMagic * math.cos(radLat) * _pi);
+  return LatLng(w.latitude + dLat, w.longitude + dLng);
 }
 
 LatLng gcj02ToWgs84(LatLng g) {
