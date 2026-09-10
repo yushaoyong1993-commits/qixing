@@ -21,6 +21,24 @@ class _MapPageState extends ConsumerState<MapPage> {
   static const _fallbackCenter = LatLng(39.908, 116.397); // 无定位时的默认视野
   final MapController _mapController = MapController();
   LatLng? _myLoc;
+  int _tileErrors = 0;
+  bool _fellBack = false;
+
+  void _onTileError() {
+    _tileErrors++;
+    if (_fellBack) return;
+    if (_tileErrors < 3) return;
+    _fellBack = true;
+    if (ref.read(mapTileSourceProvider) == MapTileSource.tianditu) {
+      ref.read(mapTileSourceProvider.notifier).state = MapTileSource.esri;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('天地图瓦片加载失败（key 类型/权限），已自动切换 Esri',
+              textAlign: TextAlign.center),
+        ));
+      }
+    }
+  }
 
   @override
   void initState() {
@@ -109,7 +127,7 @@ class _MapPageState extends ConsumerState<MapPage> {
               mapController: _mapController,
               options: const MapOptions(initialCenter: _fallbackCenter, initialZoom: 12),
               children: [
-                ...tileLayersFor(src),
+                ...tileLayersFor(src, onError: _onTileError),
                 if (_myLoc != null)
                   MarkerLayer(markers: [
                     Marker(

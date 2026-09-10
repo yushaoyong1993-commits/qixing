@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// 天地图 token（tk）：到 https://console.tianditu.gov.cn 申请「浏览器端」key 后填入。
 /// 留空时天地图源会自动回退到 Esri，保证仍能看地图。
 // 浏览器端 key（瓦片请求用）
-const String kTiandituToken = '47c92813fc1eccaf58295f9c395e06ee';
+const String kTiandituToken = 'a357f44a7a604298e9299b37f97472f7';
 // 备用：安卓端 key（若浏览器端 key 在真机被 referer 校验拦下，可换这个试）
 const String kTiandituTokenAndroid = 'a357f44a7a604298e9299b37f97472f7';
 
@@ -23,11 +23,11 @@ final mapTileSourceProvider =
     StateProvider<MapTileSource>((ref) => MapTileSource.tianditu);
 
 /// 天地图需要"底图 + 注记"两层叠加。
-List<TileLayer> tileLayersFor(MapTileSource s) {
+List<TileLayer> tileLayersFor(MapTileSource s, {void Function()? onError}) {
   switch (s) {
     case MapTileSource.tianditu:
       if (kTiandituToken.trim().isEmpty) return [esriTileLayer()]; // 未配置 tk → 回退
-      return [tiandituVecLayer(), tiandituCvaLayer()];
+      return [tiandituVecLayer(onError), tiandituCvaLayer(onError)];
     case MapTileSource.esri:
       return [esriTileLayer()];
     case MapTileSource.osm:
@@ -38,19 +38,21 @@ List<TileLayer> tileLayersFor(MapTileSource s) {
 }
 
 /// 天地图矢量底图（EPSG:3857，与 GPS 的 WGS84 经纬度一致，轨迹不偏移）
-TileLayer tiandituVecLayer() => TileLayer(
+TileLayer tiandituVecLayer([void Function()? onError]) => TileLayer(
       urlTemplate:
           'https://t{s}.tianditu.gov.cn/DataServer?T=vec_w&x={x}&y={y}&l={z}&tk=$kTiandituToken',
       subdomains: const ['0', '1', '2', '3', '4', '5', '6', '7'],
       userAgentPackageName: 'com.basho.basho',
+      errorTileCallback: (tile, error, stack) => onError?.call(),
     );
 
 /// 天地图矢量注记（中文地名/路名）
-TileLayer tiandituCvaLayer() => TileLayer(
+TileLayer tiandituCvaLayer([void Function()? onError]) => TileLayer(
       urlTemplate:
           'https://t{s}.tianditu.gov.cn/DataServer?T=cva_w&x={x}&y={y}&l={z}&tk=$kTiandituToken',
       subdomains: const ['0', '1', '2', '3', '4', '5', '6', '7'],
       userAgentPackageName: 'com.basho.basho',
+      errorTileCallback: (tile, error, stack) => onError?.call(),
     );
 
 /// 高德路网瓦片（无需 key；对非官方客户端可能灰白）
