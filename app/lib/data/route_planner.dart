@@ -21,17 +21,19 @@ class RoutePlanner {
   /// 优先级：高德骑行(配了 Web服务 key) → BRouter 骑行(免 key) → OSRM 兜底。
   Future<List<LatLng>?> planRiding(LatLng a, LatLng b) async {
     lastEngine = 'none';
+    // ① BRouter 骑行：WGS84 原生，与天地图/OSM 底图坐标系一致，无需纠偏 → 默认
+    final br = await _brouterBike(a, b);
+    if (br != null && br.length > 1) {
+      lastEngine = 'brouter';
+      return br;
+    }
+    // ② 高德骑行（GCJ-02，需双向纠偏）
     if (kAmapWebServiceKey.trim().isNotEmpty) {
       final r = await _amapRiding(a, b);
       if (r != null && r.length > 1) {
         lastEngine = 'amap';
         return r;
       }
-    }
-    final br = await _brouterBike(a, b);
-    if (br != null && br.length > 1) {
-      lastEngine = 'brouter';
-      return br;
     }
     final os = await _osrmFallback(a, b);
     if (os != null && os.length > 1) {
