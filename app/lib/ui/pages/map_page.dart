@@ -5,6 +5,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart' show LatLng, Distance, LengthUnit;
 
 import '../../data/providers.dart';
+import '../../data/route_planner.dart';
 import '../../data/route_repository.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/map_tiles.dart';
@@ -347,7 +348,11 @@ class RouteEditorPage extends ConsumerStatefulWidget {
 }
 
 class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
-  final List<LatLng> _pts = [];
+  final List<LatLng> _pts = []; // 渲染路径（沿道路规划后的点）
+  final List<LatLng> _anchors = []; // 用户点击的锚点（A/B/C…）
+  final RoutePlanner _planner = RoutePlanner();
+  bool _roadMode = true;
+  bool _planning = false;
   final _name = TextEditingController(text: '我的路线');
   final MapController _mapController = MapController();
   static const _fallbackCenter = LatLng(39.908, 116.397);
@@ -358,7 +363,44 @@ class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
   @override
   void dispose() {
     _name.dispose();
+    _planner.dispose();
     super.dispose();
+  }
+
+  /// 点按地图：首点直接落点；后续点按"沿道路规划"把上一锚点→本点连成道路折线。
+  Future<void> _onTapPoint(LatLng p) async {
+    if (_planning) return;
+    if (_anchors.isEmpty) {
+      setState(() {
+        _anchors.add(p);
+        _pts.add(p);
+      });
+      return;
+    }
+    final from = _anchors.last;
+    _anchors.add(p);
+    if (!_roadMode) {
+      setState(() => _pts.add(p));
+      return;
+    }
+    setState(() => _planning = true);
+    final seg = await _planner.planRiding(from, p);
+    if (!mounted) return;
+    final ok = seg != null && seg.length > 1;
+    setState(() {
+      if (ok) {
+        _pts.addAll(seg.skip(1));
+      } else {
+        _pts.add(p); // 规划失败 → 退化为直线
+      }
+      _planning = false;
+    });
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('按道路规划失败（网络/服务不可用），本段用直线连接',
+            textAlign: TextAlign.center),
+      ));
+    }
   }
 
   double _distKm() {
@@ -469,7 +511,7 @@ class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
               options: MapOptions(
                 initialCenter: _fallbackCenter,
                 initialZoom: 14,
-                onTap: (tapPos, latlng) => setState(() => _pts.add(latlng)),
+                onTap: (tapPos, latlng) => _onTapPoint(latlng),
                 onMapReady: () {
                   _mapReady = true;
                   final p = _pendingMove;
@@ -502,9 +544,9 @@ class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
                     Polyline(points: _pts, strokeWidth: 4, color: AppTheme.accent),
                   ]),
                 MarkerLayer(markers: [
-                  for (var i = 0; i < _pts.length; i++)
+                  for (var i = 0; i < _anchors.length; i++)
                     Marker(
-                      point: _pts[i],
+                      point: _anchors[i],
                       width: 18,
                       height: 18,
                       child: Container(
@@ -519,20 +561,39 @@ class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
               ],
             ),
           ),
+          SwitchListTile(
+            dense: true,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+            title: const Text('沿道路自动规划（A→B 自动拐弯）',
+                style: TextStyle(fontSize: 13)),
+            value: _roadMode,
+            onChanged: (v) => setState(() => _roadMode = v),
+          ),
+          if (_planning)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 4),
+              child: Text('正在按道路规划…',
+                  style: TextStyle(fontSize: 12, color: AppTheme.accentInk)),
+            ),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                TextButton(onPressed: () => setState(_pts.clear), child: const Text('清空')),
-                Text('${_pts.length} 点 · 约 ${_distKm().toStringAsFixed(2)} km',
+                TextButton(
+                    onPressed: () => setState(() {
+                          _pts.clear();
+                          _anchors.clear();
+                        }),
+                    child: const Text('清空')),
+                Text('锚点 ${_anchors.length} · 路径 ${_pts.length} 点 · 约 ${_distKm().toStringAsFixed(2)} km',
                     style: const TextStyle(fontSize: 12, color: AppTheme.txt3)),
               ],
             ),
           ),
           const Padding(
             padding: EdgeInsets.only(bottom: 10),
-            child: Text('在地图上点按打点，连成路线后保存 · 右上角可定位',
+            child: Text('点两下：A→B 自动沿道路生成带拐弯的路线 · 右上角可定位',
                 style: TextStyle(fontSize: 11.5, color: AppTheme.txt3)),
           ),
         ],
