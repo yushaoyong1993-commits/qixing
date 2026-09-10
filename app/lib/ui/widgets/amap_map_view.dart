@@ -33,6 +33,9 @@ class AmapMapView extends StatefulWidget {
 class AmapMapViewState extends State<AmapMapView> with WidgetsBindingObserver {
   late final WebViewController _c;
   bool _ready = false;
+  List<List<double>> _lastAnchors = const [];
+  List<List<double>> _lastPath = const [];
+  List<double>? _lastMyLoc;
 
   @override
   void initState() {
@@ -63,6 +66,14 @@ class AmapMapViewState extends State<AmapMapView> with WidgetsBindingObserver {
     _c.runJavaScript('refreshMap();');
   }
 
+  /// 重建地图：WebView 被其它页面覆盖后，高德底图 Canvas 上下文可能丢失且 resize 无法恢复，
+  /// 此时销毁地图重新创建（JS 会再次 post ready，随后自动恢复上次内容）。
+  void rebuild() {
+    if (!_ready) return;
+    _ready = false;
+    _c.runJavaScript('rebuildMap();');
+  }
+
   @override
   Widget build(BuildContext context) => WebViewWidget(controller: _c);
 
@@ -74,6 +85,12 @@ class AmapMapViewState extends State<AmapMapView> with WidgetsBindingObserver {
           _ready = true;
           _applyPending();
           widget.onReady?.call();
+          // 重建后自动恢复上次内容
+          if (_lastAnchors.isNotEmpty || _lastPath.isNotEmpty || _lastMyLoc != null) {
+            final payload =
+                jsonEncode({'anchors': _lastAnchors, 'path': _lastPath, 'myLoc': _lastMyLoc});
+            _c.runJavaScript('renderMap($payload);');
+          }
           break;
         case 'tap':
           widget.onTapLngLat((data['lng'] as num).toDouble(), (data['lat'] as num).toDouble());
@@ -91,6 +108,9 @@ class AmapMapViewState extends State<AmapMapView> with WidgetsBindingObserver {
     List<List<double>> path = const [],
     List<double>? myLoc,
   }) {
+    _lastAnchors = anchors;
+    _lastPath = path;
+    _lastMyLoc = myLoc;
     if (!_ready) return;
     final payload = jsonEncode({'anchors': anchors, 'path': path, 'myLoc': myLoc});
     _c.runJavaScript('renderMap($payload);');
@@ -170,6 +190,11 @@ function renderMap(o){
 }
 function moveTo(lng,lat,zoom){ if(map) map.setZoomAndCenter(zoom||16,[lng,lat]); }
 function refreshMap(){ if(map){ try{ map.resize(); }catch(e){} } }
+function rebuildMap(){
+  try{ if(map){ map.clearMap(); map.destroy(); } }catch(e){}
+  map=null; anchorMarkers=[]; pathLine=null; myMarker=null;
+  boot();
+}
 boot();
 </script>
 </body>

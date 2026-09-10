@@ -200,8 +200,8 @@ class _MapPageState extends ConsumerState<MapPage> {
     if (!mounted) return;
     await Future.delayed(const Duration(milliseconds: 350));
     if (!mounted) return;
-    _mapKey.currentState?.refresh();
-    _mapKey.currentState?.render(myLoc: _myLoc);
+    // 被覆盖后底图 Canvas 常丢失 → 直接重建地图（比 resize 可靠）
+    _mapKey.currentState?.rebuild();
   }
 
   Future<void> _confirmDelete(BuildContext context, WidgetRef ref, RouteModel r) async {
