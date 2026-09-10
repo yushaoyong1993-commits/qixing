@@ -350,6 +350,7 @@ class RouteEditorPage extends ConsumerStatefulWidget {
 class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
   final List<LatLng> _pts = []; // 渲染路径（沿道路规划后的点）
   final List<LatLng> _anchors = []; // 用户点击的锚点（A/B/C…）
+  final List<List<LatLng>> _segs = []; // 每段路径（含该段起点），用于撤销重建
   final RoutePlanner _planner = RoutePlanner();
   bool _roadMode = true;
   bool _planning = false;
@@ -380,7 +381,10 @@ class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
     final from = _anchors.last;
     _anchors.add(p);
     if (!_roadMode) {
-      setState(() => _pts.add(p));
+      setState(() {
+        _segs.add([from, p]);
+        _pts.add(p);
+      });
       return;
     }
     setState(() => _planning = true);
@@ -388,11 +392,9 @@ class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
     if (!mounted) return;
     final ok = seg != null && seg.length > 1;
     setState(() {
-      if (ok) {
-        _pts.addAll(seg.skip(1));
-      } else {
-        _pts.add(p); // 规划失败 → 退化为直线
-      }
+      final use = ok ? seg : <LatLng>[from, p]; // 规划失败 → 本段退化为直线
+      _segs.add(use);
+      _pts.addAll(use.skip(1));
       _planning = false;
     });
     if (!ok && mounted) {
@@ -401,6 +403,20 @@ class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
             textAlign: TextAlign.center),
       ));
     }
+  }
+
+  /// 撤销上一个锚点（连同该段路径），支持连续回退
+  void _undo() {
+    if (_anchors.isEmpty || _planning) return;
+    setState(() {
+      _anchors.removeLast();
+      if (_segs.isNotEmpty) _segs.removeLast();
+      _pts.clear();
+      if (_anchors.isNotEmpty) _pts.add(_anchors.first);
+      for (final seg in _segs) {
+        _pts.addAll(seg.skip(1));
+      }
+    });
   }
 
   double _distKm() {
@@ -580,12 +596,22 @@ class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                TextButton(
-                    onPressed: () => setState(() {
-                          _pts.clear();
-                          _anchors.clear();
-                        }),
-                    child: const Text('清空')),
+                Row(
+                  children: [
+                    TextButton.icon(
+                      onPressed: _anchors.isEmpty || _planning ? null : _undo,
+                      icon: const Icon(Icons.undo, size: 18),
+                      label: const Text('撤销上一点'),
+                    ),
+                    TextButton(
+                        onPressed: () => setState(() {
+                              _pts.clear();
+                              _anchors.clear();
+                              _segs.clear();
+                            }),
+                        child: const Text('清空')),
+                  ],
+                ),
                 Text('锚点 ${_anchors.length} · 路径 ${_pts.length} 点 · 约 ${_distKm().toStringAsFixed(2)} km',
                     style: const TextStyle(fontSize: 12, color: AppTheme.txt3)),
               ],

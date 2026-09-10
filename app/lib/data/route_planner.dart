@@ -14,13 +14,43 @@ class RoutePlanner {
 
   final http.Client _c;
 
-  /// 骑行路径规划。失败返回 null（调用方回退为直线）。
+  /// 骑行路径规划（真骑行 profile）。失败返回 null（调用方回退为直线）。
+  /// 优先级：高德骑行(配了 Web服务 key) → BRouter 骑行(免 key) → OSRM 兜底。
   Future<List<LatLng>?> planRiding(LatLng a, LatLng b) async {
     if (kAmapWebServiceKey.trim().isNotEmpty) {
       final r = await _amapRiding(a, b);
       if (r != null && r.length > 1) return r;
     }
-    return _osrmBike(a, b);
+    final br = await _brouterBike(a, b);
+    if (br != null && br.length > 1) return br;
+    return _osrmFallback(a, b);
+  }
+
+  /// BRouter 骑行规划（免 key；profile=trekking 为骑行/碎石路取向，fastbike 为公路车）
+  Future<List<LatLng>?> _brouterBike(LatLng a, LatLng b) async {
+    try {
+      final uri = Uri.https('brouter.de', '/brouter', {
+        'lonlats': '${a.longitude},${a.latitude}|${b.longitude},${b.latitude}',
+        'profile': 'trekking',
+        'alternativeidx': '0',
+        'format': 'geojson',
+      });
+      final res = await _c.get(uri).timeout(const Duration(seconds: 20));
+      if (res.statusCode != 200) return null;
+      final json = jsonDecode(res.body) as Map<String, dynamic>;
+      final feats = (json['features'] as List?) ?? const [];
+      if (feats.isEmpty) return null;
+      final coords = (feats.first['geometry']?['coordinates'] as List?) ?? const [];
+      final pts = <LatLng>[];
+      for (final c in coords) {
+        if (c is List && c.length >= 2) {
+          pts.add(LatLng((c[1] as num).toDouble(), (c[0] as num).toDouble()));
+        }
+      }
+      return pts.isEmpty ? null : pts;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// 高德骑行规划（GCJ-02 坐标，需转成 WGS84 才能对齐天地图/OSM）
@@ -57,11 +87,11 @@ class RoutePlanner {
     }
   }
 
-  /// OSRM 公共骑行规划（免 key；WGS84）
-  Future<List<LatLng>?> _osrmBike(LatLng a, LatLng b) async {
+  /// OSRM 公共实例兜底（注意：公共 demo 只跑汽车 profile，仅作最后兜底）
+  Future<List<LatLng>?> _osrmFallback(LatLng a, LatLng b) async {
     try {
       final path =
-          '/route/v1/bike/${a.longitude},${a.latitude};${b.longitude},${b.latitude}';
+          '/route/v1/driving/${a.longitude},${a.latitude};${b.longitude},${b.latitude}';
       final uri = Uri.https('router.project-osrm.org', path, {
         'overview': 'full',
         'geometries': 'geojson',
