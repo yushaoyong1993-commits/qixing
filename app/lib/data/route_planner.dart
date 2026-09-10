@@ -6,7 +6,7 @@ import 'package:latlong2/latlong.dart' show LatLng;
 
 /// 高德 Web 服务 key（可选）：如需用高德骑行路径规划，把"Web服务"类型的 key 填这里。
 /// 留空则使用 OSRM（免 key，返回 WGS84，与天地图/OSM 坐标一致无需纠偏）。
-const String kAmapWebServiceKey = '';
+const String kAmapWebServiceKey = '579bd0817cbc0a1f642508947879682d';
 
 /// 路径规划：把 A→B 两点之间按道路生成折线点（用于手绘路线的"沿道路"效果）。
 class RoutePlanner {
@@ -14,16 +14,31 @@ class RoutePlanner {
 
   final http.Client _c;
 
+  /// 最近一次规划实际使用的引擎（amap / brouter / osrm / none）
+  String lastEngine = 'none';
+
   /// 骑行路径规划（真骑行 profile）。失败返回 null（调用方回退为直线）。
   /// 优先级：高德骑行(配了 Web服务 key) → BRouter 骑行(免 key) → OSRM 兜底。
   Future<List<LatLng>?> planRiding(LatLng a, LatLng b) async {
+    lastEngine = 'none';
     if (kAmapWebServiceKey.trim().isNotEmpty) {
       final r = await _amapRiding(a, b);
-      if (r != null && r.length > 1) return r;
+      if (r != null && r.length > 1) {
+        lastEngine = 'amap';
+        return r;
+      }
     }
     final br = await _brouterBike(a, b);
-    if (br != null && br.length > 1) return br;
-    return _osrmFallback(a, b);
+    if (br != null && br.length > 1) {
+      lastEngine = 'brouter';
+      return br;
+    }
+    final os = await _osrmFallback(a, b);
+    if (os != null && os.length > 1) {
+      lastEngine = 'osrm';
+      return os;
+    }
+    return null;
   }
 
   /// BRouter 骑行规划（免 key；profile=trekking 为骑行/碎石路取向，fastbike 为公路车）
@@ -53,10 +68,10 @@ class RoutePlanner {
     }
   }
 
-  /// 高德骑行规划（GCJ-02 坐标，需转成 WGS84 才能对齐天地图/OSM）
+  /// 高德骑行规划 v4（bicycling 接口；v3 无骑行）。返回 GCJ-02 → 转 WGS84 对齐天地图/OSM
   Future<List<LatLng>?> _amapRiding(LatLng a, LatLng b) async {
     try {
-      final uri = Uri.https('restapi.amap.com', '/v3/direction/riding', {
+      final uri = Uri.https('restapi.amap.com', '/v4/direction/bicycling', {
         'origin': '${a.longitude},${a.latitude}',
         'destination': '${b.longitude},${b.latitude}',
         'key': kAmapWebServiceKey,
@@ -64,12 +79,12 @@ class RoutePlanner {
       final res = await _c.get(uri).timeout(const Duration(seconds: 12));
       if (res.statusCode != 200) return null;
       final json = jsonDecode(res.body) as Map<String, dynamic>;
-      final paths = (json['route']?['paths'] as List?) ?? const [];
+      final paths = (json['data']?['paths'] as List?) ?? const [];
       if (paths.isEmpty) return null;
       final steps = (paths.first['steps'] as List?) ?? const [];
       final pts = <LatLng>[];
-      for (final s in steps) {
-        final poly = (s['polyline'] as String?) ?? '';
+      for (final st in steps) {
+        final poly = (st['polyline'] as String?) ?? '';
         for (final pair in poly.split(';')) {
           final xy = pair.split(',');
           if (xy.length == 2) {

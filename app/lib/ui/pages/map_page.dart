@@ -354,6 +354,7 @@ class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
   final RoutePlanner _planner = RoutePlanner();
   bool _roadMode = true;
   bool _planning = false;
+  String _engine = '';
   final _name = TextEditingController(text: '我的路线');
   final MapController _mapController = MapController();
   static const _fallbackCenter = LatLng(39.908, 116.397);
@@ -395,6 +396,7 @@ class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
       final use = ok ? seg : <LatLng>[from, p]; // 规划失败 → 本段退化为直线
       _segs.add(use);
       _pts.addAll(use.skip(1));
+      _engine = ok ? _planner.lastEngine : 'straight';
       _planning = false;
     });
     if (!ok && mounted) {
@@ -590,6 +592,19 @@ class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
               padding: EdgeInsets.only(bottom: 4),
               child: Text('正在按道路规划…',
                   style: TextStyle(fontSize: 12, color: AppTheme.accentInk)),
+            )
+          else if (_engine.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(
+                switch (_engine) {
+                  'amap' => '规划引擎：高德骑行 ✅',
+                  'brouter' => '规划引擎：BRouter 骑行',
+                  'osrm' => '规划引擎：OSRM（汽车，仅供参考）',
+                  _ => '本段为直线（规划失败）',
+                },
+                style: const TextStyle(fontSize: 11.5, color: AppTheme.txt3),
+              ),
             ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
