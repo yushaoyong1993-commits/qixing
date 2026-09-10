@@ -6,6 +6,10 @@ import 'package:webview_flutter/webview_flutter.dart';
 /// 高德 JS API key（「Web端(JS API)」类型）
 const String kAmapJsKey = '47c92813fc1eccaf58295f9c395e06ee';
 
+/// 高德 JS API 安全密钥（securityJsCode，2021-12 之后申请的 key 必填）。
+/// 控制台 → 应用管理 → 该 key → 查看「安全密钥」。
+const String kAmapSecurityJsCode = '';
+
 /// 高德 JS 地图页（WebView）。职责只有两件：渲染（底图/锚点/路径/我的位置）+ 把点击坐标回传。
 /// 规划请求由 Flutter 侧发起（直接调用高德 Web 服务，坐标全程 GCJ-02，零转换）。
 class AmapMapView extends StatefulWidget {
@@ -37,7 +41,7 @@ class AmapMapViewState extends State<AmapMapView> {
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(const Color(0xFFF2F2F5))
       ..addJavaScriptChannel('Basho', onMessageReceived: _onJsMessage)
-      ..loadHtmlString(_html());
+      ..loadHtmlString(_html(), baseUrl: 'https://www.amap.com/');
   }
 
   @override
@@ -84,6 +88,9 @@ class AmapMapViewState extends State<AmapMapView> {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <style>html,body,#map{height:100%;margin:0;padding:0;background:#F2F2F5}</style>
+<script>
+  window._AMapSecurityConfig = { securityJsCode: '$kAmapSecurityJsCode' };
+</script>
 <script src="https://webapi.amap.com/maps?v=2.0&key=$kAmapJsKey"></script>
 </head>
 <body>
