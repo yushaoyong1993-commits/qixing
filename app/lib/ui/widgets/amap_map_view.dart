@@ -4,11 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 /// 高德 JS API key（「Web端(JS API)」类型）
-const String kAmapJsKey = '47c92813fc1eccaf58295f9c395e06ee';
+const String kAmapJsKey = 'a69189b5269db2903026fc6f51165eb9';
 
 /// 高德 JS API 安全密钥（securityJsCode，2021-12 之后申请的 key 必填）。
 /// 控制台 → 应用管理 → 该 key → 查看「安全密钥」。
-const String kAmapSecurityJsCode = '';
+const String kAmapSecurityJsCode = '8fa7afee1bfda7d5e8a1e8061f5dd3a6';
 
 /// 高德 JS 地图页（WebView）。职责只有两件：渲染（底图/锚点/路径/我的位置）+ 把点击坐标回传。
 /// 规划请求由 Flutter 侧发起（直接调用高德 Web 服务，坐标全程 GCJ-02，零转换）。
