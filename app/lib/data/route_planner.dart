@@ -107,6 +107,41 @@ class RoutePlanner {
     }
   }
 
+  /// 骑行规划（GCJ-02 直通）：输入输出都是高德坐标，**不做任何转换**。
+  /// 用于"全高德"地图（底图与路径同为 GCJ-02），保证完全对齐。
+  Future<RidingPath?> planRidingGcj(LatLng a, LatLng b) async {
+    try {
+      final uri = Uri.https('restapi.amap.com', '/v4/direction/bicycling', {
+        'origin': '${a.longitude},${a.latitude}',
+        'destination': '${b.longitude},${b.latitude}',
+        'key': kAmapWebServiceKey,
+      });
+      final res = await _c.get(uri).timeout(const Duration(seconds: 15));
+      if (res.statusCode != 200) return null;
+      final json = jsonDecode(res.body) as Map<String, dynamic>;
+      final paths = (json['data']?['paths'] as List?) ?? const [];
+      if (paths.isEmpty) return null;
+      final dist = double.tryParse('${paths.first['distance'] ?? 0}') ?? 0;
+      final steps = (paths.first['steps'] as List?) ?? const [];
+      final pts = <LatLng>[];
+      for (final st in steps) {
+        final poly = (st['polyline'] as String?) ?? '';
+        for (final pair in poly.split(';')) {
+          final xy = pair.split(',');
+          if (xy.length == 2) {
+            final lng = double.tryParse(xy[0]);
+            final lat = double.tryParse(xy[1]);
+            if (lat != null && lng != null) pts.add(LatLng(lat, lng));
+          }
+        }
+      }
+      if (pts.length < 2) return null;
+      return RidingPath(points: pts, distanceM: dist);
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// OSRM 公共实例兜底（注意：公共 demo 只跑汽车 profile，仅作最后兜底）
   Future<List<LatLng>?> _osrmFallback(LatLng a, LatLng b) async {
     try {
@@ -193,4 +228,12 @@ LatLng gcj02ToWgs84(LatLng g) {
   final dLat = (dLat0 * 180.0) / ((_a * (1 - _ee)) / (magic * sqrtMagic) * _pi);
   final dLng = (dLng0 * 180.0) / (_a / sqrtMagic * math.cos(radLat) * _pi);
   return LatLng(g.latitude - dLat, g.longitude - dLng);
+}
+
+
+/// 高德骑行规划结果（GCJ-02）
+class RidingPath {
+  const RidingPath({required this.points, required this.distanceM});
+  final List<LatLng> points;
+  final double distanceM;
 }
