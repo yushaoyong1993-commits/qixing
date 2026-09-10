@@ -17,6 +17,7 @@ class MapPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final routes = ref.watch(routesProvider).valueOrNull ?? const <RouteModel>[];
+    final tileSrc = ref.watch(mapTileSourceProvider);
     return Scaffold(
       appBar: AppBar(
         title: const Text('地图 · 路线'),
@@ -31,11 +32,33 @@ class MapPage extends ConsumerWidget {
       ),
       body: Column(
         children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            child: Row(
+              children: [
+                Expanded(
+                  child: SegmentedButton<MapTileSource>(
+                    showSelectedIcon: false,
+                    segments: [
+                      for (final s in MapTileSource.values)
+                        ButtonSegment(
+                            value: s,
+                            label: Text(tileSourceLabel(s),
+                                style: const TextStyle(fontSize: 12))),
+                    ],
+                    selected: {tileSrc},
+                    onSelectionChanged: (v) =>
+                        ref.read(mapTileSourceProvider.notifier).state = v.first,
+                  ),
+                ),
+              ],
+            ),
+          ),
           SizedBox(
-            height: 260,
+            height: 230,
             child: FlutterMap(
               options: const MapOptions(initialCenter: _homeCenter, initialZoom: 12),
-              children: [amapTileLayer()],
+              children: [tileLayerFor(tileSrc)],
             ),
           ),
           const Padding(
@@ -219,7 +242,7 @@ class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
                 onTap: (tapPos, latlng) => setState(() => _pts.add(latlng)),
               ),
               children: [
-                amapTileLayer(),
+                tileLayerFor(ref.watch(mapTileSourceProvider)),
                 if (_pts.length > 1)
                   PolylineLayer(polylines: [
                     Polyline(points: _pts, strokeWidth: 4, color: AppTheme.accent),
