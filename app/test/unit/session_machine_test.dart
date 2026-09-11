@@ -52,15 +52,18 @@ void main() {
   test('真实采样 addSample：累加距离/时长/正爬升，暂停不累计', () {
     final m = SessionMachine();
     m.start();
-    m.addSample(dtSec: 10, distKm: 0.1, elevM: 5);
-    m.addSample(dtSec: 10, distKm: 0.2, elevM: 3);
+    m.tickSec(10);
+    m.addSample(distKm: 0.1, elevM: 5);
+    m.tickSec(10);
+    m.addSample(distKm: 0.2, elevM: 3);
     expect(m.distanceKm, closeTo(0.3, 1e-9));
-    expect(m.movingSec, 20);
+    expect(m.movingSec, 20); // 时长只由 tickSec 累加
     expect(m.elevGainM, closeTo(8, 1e-9));
     m.pause();
-    m.addSample(dtSec: 99, distKm: 99, elevM: 99);
+    m.tickSec(99);
+    m.addSample(distKm: 99, elevM: 99);
     expect(m.distanceKm, closeTo(0.3, 1e-9));
-    expect(m.movingSec, 20);
+    expect(m.movingSec, 20); // 暂停后秒表与采样都不累计
   });
 
 }

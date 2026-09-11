@@ -28,11 +28,15 @@ class _RecordPageState extends ConsumerState<RecordPage> {
 
   DateTime _startedAt = DateTime.now();
 
+  // 秒表（与 GPS 解耦：无定位时长照常走）
+  Timer? _ticker;
+
   // 真实定位
   StreamSubscription<Position>? _posSub;
   Position? _last;
   double _spdKmph = 0;
   bool _gpsReady = false;
+  bool _gpsDenied = false;
 
   DraftData? _draft;
   final List<SimpleTrack> _tracks = [];
@@ -50,9 +54,21 @@ class _RecordPageState extends ConsumerState<RecordPage> {
 
   @override
   void dispose() {
+    _ticker?.cancel();
     _posSub?.cancel();
     _persistDraftIfActive();
     super.dispose();
+  }
+
+  void _startTicker() {
+    _ticker?.cancel();
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      if (_m.phase == SessionPhase.recording) {
+        _m.tickSec();
+        setState(() {});
+      }
+    });
   }
 
   void _persistDraftIfActive() {
@@ -73,8 +89,9 @@ class _RecordPageState extends ConsumerState<RecordPage> {
       if (p == LocationPermission.denied) p = await Geolocator.requestPermission();
       if (p == LocationPermission.denied || p == LocationPermission.deniedForever) {
         if (mounted) {
+          setState(() => _gpsDenied = true);
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('未授予定位权限，将无法记录真实轨迹', textAlign: TextAlign.center)),
+            const SnackBar(content: Text('未授予定位权限：时长照常记录，但无距离/速度/轨迹', textAlign: TextAlign.center)),
           );
         }
         return;
@@ -93,13 +110,10 @@ class _RecordPageState extends ConsumerState<RecordPage> {
 
   void _onPos(Position pos) {
     if (_m.phase == SessionPhase.recording) {
-      final nowT = pos.timestamp;
-      double dtSec = 0;
       double distKm = 0;
       double elevDelta = 0;
       double meters = 0;
       if (_last != null) {
-        dtSec = nowT.difference(_last!.timestamp).inMilliseconds / 1000;
         meters = Geolocator.distanceBetween(
           _last!.latitude, _last!.longitude, pos.latitude, pos.longitude);
         distKm = meters / 1000;
@@ -110,7 +124,7 @@ class _RecordPageState extends ConsumerState<RecordPage> {
       _last = pos;
       final spd = pos.speed.isFinite && pos.speed >= 0 ? pos.speed * 3.6 : 0.0;
       _spdKmph = spd;
-      _m.addSample(dtSec: dtSec, distKm: distKm, elevM: elevDelta);
+      _m.addSample(distKm: distKm, elevM: elevDelta);
       if (meters >= 5 || _tracks.isEmpty) {
         _tracks.add(SimpleTrack(
           tMs: pos.timestamp.millisecondsSinceEpoch,
@@ -148,6 +162,7 @@ class _RecordPageState extends ConsumerState<RecordPage> {
     _last = null;
     _spdKmph = 0;
     _tracks.clear();
+    _startTicker();
     setState(() {});
     _initLoc();
   }
@@ -322,8 +337,17 @@ class _RecordPageState extends ConsumerState<RecordPage> {
       children: [
         Text(_fmtSec(_m.movingSec), style: _h1.copyWith(fontSize: 54)),
         const SizedBox(height: 6),
-        Text(paused ? '已暂停' : (_gpsReady ? '记录中 · GPS 正常' : '定位中… · 请到开阔处'),
-            style: TextStyle(fontSize: 12.5, color: paused ? AppTheme.warn : AppTheme.txt3)),
+        Text(
+            paused
+                ? '已暂停'
+                : _gpsDenied
+                    ? '未获定位权限 · 仅记录时长'
+                    : (_gpsReady ? '记录中 · GPS 正常' : '搜索卫星中… · 请到开阔处'),
+            style: TextStyle(
+                fontSize: 12.5,
+                color: paused
+                    ? AppTheme.warn
+                    : (_gpsDenied ? AppTheme.warn : AppTheme.txt3))),
         const SizedBox(height: 14),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,

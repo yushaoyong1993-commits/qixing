@@ -73,11 +73,17 @@ class SessionMachine {
     _lapCount = 0;
   }
 
-  /// 采纳一个"真实采样"（由位置流驱动）：累加移动时长、距离、正爬升。
-  /// 注意：暂停期间不接收（调用方暂停订阅；此处也做防御）。
-  void addSample({required double dtSec, required double distKm, double elevM = 0}) {
+  /// 秒表推进（由 UI 的每秒计时器驱动，**与 GPS 无关**）：
+  /// 这样即使没有定位/室内无信号，记录时长也正常走。
+  void tickSec([int seconds = 1]) {
     if (_phase != SessionPhase.recording) return;
-    _movingSec += dtSec.round();
+    _movingSec += seconds;
+  }
+
+  /// 采纳一个"真实采样"（由位置流驱动）：只累加距离与正爬升。
+  /// 时长一律由 [tickSec] 负责，避免无 GPS 时时间不走、或有 GPS 时重复计时。
+  void addSample({required double distKm, double elevM = 0}) {
+    if (_phase != SessionPhase.recording) return;
     _distanceKm += distKm;
     if (elevM > 0) _elevGainM += elevM;
   }
