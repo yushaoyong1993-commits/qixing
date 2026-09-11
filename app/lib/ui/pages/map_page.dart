@@ -11,6 +11,7 @@ import '../../data/route_repository.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/amap_map_view.dart';
 import '../widgets/not_ready.dart';
+import 'navigation_page.dart';
 
 /// 定位（GPS WGS84 → 高德 GCJ-02），供地图页与路线页共用。
 /// 返回 GCJ-02 的 [lng, lat]；失败返回 null（silent=true 时不弹提示）。
@@ -265,9 +266,10 @@ class _MapPageState extends ConsumerState<MapPage> {
                     style: FilledButton.styleFrom(backgroundColor: AppTheme.accent),
                     onPressed: () {
                       Navigator.pop(c);
-                      showNotReady(context, '沿此路线骑行（导航）');
+                      Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => NavigationPage(route: r)));
                     },
-                    child: const Text('沿此路线骑行（未完成）'),
+                    child: const Text('沿此路线骑行'),
                   ),
                 ),
                 const SizedBox(width: 8),

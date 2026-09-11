@@ -76,6 +76,20 @@ class AmapMapViewState extends State<AmapMapView> with WidgetsBindingObserver {
   /// 强制刷新（resize + 保持当前层级）
   void refresh() => _js('refreshMap();');
 
+  /// 导航绘制：已骑（灰色）/ 未骑（橙色）双色路线 + 当前位置
+  void renderNav({
+    required List<List<double>> done,
+    required List<List<double>> todo,
+    List<double>? me,
+  }) {
+    final payload = jsonEncode({'done': done, 'todo': todo, 'me': me});
+    _lastNav = payload;
+    if (!_ready) return;
+    _js('renderNav($payload);');
+  }
+
+  String? _lastNav;
+
   /// 自动缩放到当前绘制的路径/轨迹（用于详情页查看整条轨迹）
   void fitRoute() => _js('fitRoute();');
 
@@ -115,6 +129,8 @@ class AmapMapViewState extends State<AmapMapView> with WidgetsBindingObserver {
                 jsonEncode({'anchors': _lastAnchors, 'path': _lastPath, 'myLoc': _lastMyLoc});
             _js('renderMap($payload);');
           }
+          final navPayload = _lastNav;
+          if (navPayload != null) _js('renderNav($navPayload);');
           break;
         case 'tap':
           widget.onTapLngLat((data['lng'] as num).toDouble(), (data['lat'] as num).toDouble());
@@ -214,6 +230,28 @@ function renderMap(o){
 }
 function moveTo(lng,lat,zoom){ if(map) map.setZoomAndCenter(zoom||16,[lng,lat]); }
 function refreshMap(){ if(map){ try{ map.resize(); }catch(e){} } }
+var navDone=null, navTodo=null, navMe=null;
+function renderNav(o){
+  if(!map) return;
+  if(navDone){ map.remove(navDone); navDone=null; }
+  if(navTodo){ map.remove(navTodo); navTodo=null; }
+  if(navMe){ map.remove(navMe); navMe=null; }
+  function toPath(arr){ return (arr||[]).map(function(p){ return new AMap.LngLat(p[0],p[1]); }); }
+  if(o.done && o.done.length>1){
+    navDone=new AMap.Polyline({path:toPath(o.done),strokeColor:'#9A9AA5',strokeWeight:6,lineJoin:'round',lineCap:'round'});
+    map.add(navDone);
+  }
+  if(o.todo && o.todo.length>1){
+    navTodo=new AMap.Polyline({path:toPath(o.todo),strokeColor:'#FC4C02',strokeWeight:6,lineJoin:'round',lineCap:'round'});
+    map.add(navTodo);
+  }
+  if(o.me){
+    navMe=new AMap.Marker({position:new AMap.LngLat(o.me[0],o.me[1]),
+      content:'<div style="width:18px;height:18px;border-radius:50%;background:#2F80ED;border:3px solid #fff;box-shadow:0 0 6px rgba(0,0,0,.35)"></div>',
+      offset:new AMap.Pixel(-9,-9),zIndex:300});
+    map.add(navMe);
+  }
+}
 function fitRoute(){
   if(!map) return;
   try{
