@@ -129,7 +129,10 @@ class _StatsPageState extends ConsumerState<StatsPage> {
           )
         else
           for (final r in dayRides)
-            ListTile(
+            // 放在带背景的卡片里 → 需要 Material 承载水波纹（否则 Flutter 会告警）
+            Material(
+              type: MaterialType.transparency,
+              child: ListTile(
               dense: true,
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.directions_bike, color: AppTheme.accent, size: 18),
@@ -140,6 +143,7 @@ class _StatsPageState extends ConsumerState<StatsPage> {
               trailing: const Icon(Icons.chevron_right, size: 16, color: AppTheme.txt3),
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => ActivityDetailPage(rideId: r.id)),
+              ),
               ),
             ),
       ],
