@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../data/gpx.dart';
 import '../../data/providers.dart';
 import '../../domain/stats/aggregate.dart' as k;
 import '../../theme/app_theme.dart';
@@ -92,11 +93,44 @@ class MePage extends ConsumerWidget {
                 const EntryTile(
                     icon: Icons.pedal_bike, title: '我的装备', notReady: true, trailingText: '›'),
                 const Divider(height: 1),
-                const EntryTile(
-                    icon: Icons.download, title: '导入骑行数据（GPX/FIT）', notReady: true, trailingText: '›'),
+                EntryTile(
+                  icon: Icons.download,
+                  title: '导入骑行数据（GPX）',
+                  subtitle: '从码表/其他 App 导入轨迹，FIT/TKX（未完成）',
+                  trailingText: '›',
+                  onTap: () async {
+                    final repo = ref.read(activityRepositoryProvider);
+                    final r = await GpxIo.importGpx(repo);
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: Text(
+                        r == null
+                            ? '未选择文件或文件无有效轨迹点'
+                            : '已导入「${r.$2}」· ${r.$3} 个轨迹点',
+                        textAlign: TextAlign.center,
+                      ),
+                    ));
+                  },
+                ),
                 const Divider(height: 1),
-                const EntryTile(
-                    icon: Icons.upload, title: '导出数据（GPX）', notReady: true, trailingText: '›'),
+                EntryTile(
+                  icon: Icons.upload,
+                  title: '导出全部活动（GPX）',
+                  subtitle: '把带轨迹的活动导出为 .gpx 并分享',
+                  trailingText: '›',
+                  onTap: () async {
+                    final repo = ref.read(activityRepositoryProvider);
+                    final items = [for (final r in rides) (r.id, r.name)];
+                    final n = await GpxIo.exportAllActivityIds(repo: repo, items: items);
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: Text(
+                        n == 0 ? '没有可导出的轨迹' : '已导出 $n 个 GPX 文件',
+                        textAlign: TextAlign.center,
+                      ),
+                    ));
+                  },
+                ),
                 const Divider(height: 1),
                 EntryTile(
                   icon: Icons.settings_outlined,

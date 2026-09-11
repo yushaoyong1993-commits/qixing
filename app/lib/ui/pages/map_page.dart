@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart' show LatLng, Distance, LengthUnit;
 
+import '../../data/activity_repository.dart';
+import '../../data/gpx.dart';
 import '../../data/providers.dart';
 import '../../data/route_planner.dart';
 import '../../data/route_repository.dart';
@@ -296,9 +298,27 @@ class _MapPageState extends ConsumerState<MapPage> {
               ),
             const SizedBox(height: 8),
             TextButton(
-              onPressed: () => showNotReady(context, '导出 GPX'),
-              child: const Text('导出 GPX（未完成）',
-                  style: TextStyle(fontSize: 12, color: AppTheme.txt3)),
+              onPressed: () async {
+                // 路线点存的是 GCJ-02（高德）→ 导出前转回 WGS84，保证 GPX 通用
+                final pts = [
+                  for (final p in r.points)
+                    () {
+                      final w = gcj02ToWgs84(LatLng(p[0], p[1]));
+                      return SimpleTrack(
+                        tMs: DateTime.now().millisecondsSinceEpoch,
+                        lat: w.latitude,
+                        lon: w.longitude,
+                      );
+                    }(),
+                ];
+                Navigator.pop(c);
+                if (pts.length < 2) {
+                  showNotReady(context, '导出 GPX（该路线点太少）');
+                  return;
+                }
+                await GpxIo.exportAndShare(fileName: r.name, points: pts);
+              },
+              child: const Text('导出 GPX', style: TextStyle(fontSize: 12)),
             ),
           ],
         ),

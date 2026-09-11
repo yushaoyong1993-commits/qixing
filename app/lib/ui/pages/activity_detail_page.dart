@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart' show LatLng;
 
 import '../../data/activity_repository.dart';
+import '../../data/gpx.dart';
 import '../../data/providers.dart';
 import '../../data/route_planner.dart';
 import '../../domain/stats/aggregate.dart' as k;
@@ -81,6 +82,24 @@ class _ActivityDetailPageState extends ConsumerState<ActivityDetailPage> {
       appBar: AppBar(
         title: const Text('骑行详情'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.ios_share),
+            tooltip: '导出 GPX',
+            onPressed: () async {
+              final n = await GpxIo.exportActivity(
+                repo: ref.read(activityRepositoryProvider),
+                rideId: widget.rideId,
+                name: '跋涉-${r!.name}',
+              );
+              if (!context.mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text(
+                  n < 2 ? '该活动没有轨迹可导出' : '已生成 GPX（$n 个轨迹点）',
+                  textAlign: TextAlign.center,
+                ),
+              ));
+            },
+          ),
           TextButton(
             onPressed: () => showNotReady(context, '编辑活动（名称/类型/备注）'),
             child: const Text('编辑（未完成）', style: TextStyle(fontSize: 12)),

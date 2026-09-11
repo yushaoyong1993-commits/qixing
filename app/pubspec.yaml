@@ -45,6 +45,9 @@ dependencies:
   http: ^1.6.0
   webview_flutter: ^4.14.1
   flutter_tts: ^4.2.5
+  share_plus: ^13.3.0
+  file_picker: ^12.2.0
+  xml: ^7.0.1
 dev_dependencies:
   flutter_test:
     sdk: flutter
