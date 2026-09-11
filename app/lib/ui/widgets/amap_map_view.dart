@@ -76,6 +76,9 @@ class AmapMapViewState extends State<AmapMapView> with WidgetsBindingObserver {
   /// 强制刷新（resize + 保持当前层级）
   void refresh() => _js('refreshMap();');
 
+  /// 自动缩放到当前绘制的路径/轨迹（用于详情页查看整条轨迹）
+  void fitRoute() => _js('fitRoute();');
+
   /// 重建地图：WebView 被其它页面覆盖后，高德底图 Canvas 上下文可能丢失且 resize 无法恢复，
   /// 此时销毁地图重新创建（JS 会再次 post ready，随后自动恢复上次内容）。
   void rebuild() {
@@ -211,6 +214,13 @@ function renderMap(o){
 }
 function moveTo(lng,lat,zoom){ if(map) map.setZoomAndCenter(zoom||16,[lng,lat]); }
 function refreshMap(){ if(map){ try{ map.resize(); }catch(e){} } }
+function fitRoute(){
+  if(!map) return;
+  try{
+    if(pathLine){ map.setFitView([pathLine], false, [50,50,50,50], 17); }
+    else { map.setFitView(null, false, [50,50,50,50], 17); }
+  }catch(e){}
+}
 function rebuildMap(){
   try{ if(map){ map.clearMap(); map.destroy(); } }catch(e){}
   map=null; anchorMarkers=[]; pathLine=null; myMarker=null;
