@@ -87,6 +87,17 @@ class Gpx {
     return (m / 1000, up);
   }
 
+  /// 去掉文件名末尾的 .gpx（大小写不敏感），并清理空白
+  static String stripGpxExtension(String fileName) {
+    var n = fileName.trim();
+    final lower = n.toLowerCase();
+    if (lower.endsWith('.gpx')) {
+      n = n.substring(0, n.length - 4);
+    }
+    n = n.trim();
+    return n;
+  }
+
   static String _esc(String s) => s
       .replaceAll('&', '&amp;')
       .replaceAll('<', '&lt;')
@@ -168,7 +179,7 @@ class GpxIo {
     final endAt = DateTime.fromMillisecondsSinceEpoch(pts.last.tMs);
     var movingS = endAt.difference(startAt).inSeconds;
     if (movingS <= 0) movingS = pts.length; // 无时间信息时按每秒 1 点估算
-    final baseName = picked.$1.replaceAll(RegExp(r'\.gpx\$', caseSensitive: false), '');
+    final baseName = Gpx.stripGpxExtension(picked.$1);
     final id = await repo.saveRide(
       name: baseName.isEmpty ? '导入骑行' : baseName,
       type: '导入',
@@ -181,6 +192,7 @@ class GpxIo {
       hrAvg: null,
       hrMax: null,
       kcal: (km * 24).round(),
+      source: '导入',
     );
     await repo.saveTrackPoints(id, pts);
     return (id, baseName, pts.length);

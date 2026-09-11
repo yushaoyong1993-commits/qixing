@@ -82,8 +82,11 @@ class ActivityRepository {
         ));
   }
 
-  Future<void> deleteRide(int id) {
-    return (_db.delete(_db.activities)..where((t) => t.id.equals(id))).go();
+  /// 删除活动（级联删除其轨迹点与分段，避免孤儿数据）
+  Future<void> deleteRide(int id) async {
+    await (_db.delete(_db.trackPoints)..where((t) => t.activityId.equals(id))).go();
+    await (_db.delete(_db.laps)..where((t) => t.activityId.equals(id))).go();
+    await (_db.delete(_db.activities)..where((t) => t.id.equals(id))).go();
   }
 
   Future<void> updateMeta(int id, {String? name, String? type, String? note}) {

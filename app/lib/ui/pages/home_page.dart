@@ -298,7 +298,9 @@ class _HomePageState extends ConsumerState<HomePage> {
     final date =
         '${r.startAt.month}月${r.startAt.day}日 ${r.startAt.hour}:${r.startAt.minute.toString().padLeft(2, '0')}';
     final avgSpeed = r.durationMin > 0 ? (r.distanceKm / (r.durationMin / 60)) : 0.0;
-    return ListTile(
+    return Material(
+      type: MaterialType.transparency,
+      child: ListTile(
       leading: const Icon(Icons.directions_bike, color: AppTheme.accent),
       title: Text('骑行 · $date', style: const TextStyle(fontSize: 14)),
       subtitle: Text('${u.dist(r.distanceKm)} · 爬升 ${u.elev(r.elevGainM)}'),
@@ -306,6 +308,7 @@ class _HomePageState extends ConsumerState<HomePage> {
           style: const TextStyle(fontSize: 13, color: AppTheme.txt2)),
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => ActivityDetailPage(rideId: r.id)),
+      ),
       ),
     );
   }

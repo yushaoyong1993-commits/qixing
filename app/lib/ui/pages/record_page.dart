@@ -24,6 +24,9 @@ class RecordPage extends ConsumerStatefulWidget {
 
 class _RecordPageState extends ConsumerState<RecordPage> {
   final SessionMachine _m = SessionMachine();
+  /// dispose 阶段不能再使用 ref（Riverpod 会抛 "Cannot use ref after disposed"），
+  /// 因此在 initState 里缓存仓库引用，供草稿落库使用。
+  late final ActivityRepository _repo;
   static const _types = ['公路', '山地', '通勤', '训练'];
 
   String _type = '公路';
@@ -58,6 +61,7 @@ class _RecordPageState extends ConsumerState<RecordPage> {
   @override
   void initState() {
     super.initState();
+    _repo = ref.read(activityRepositoryProvider);
     _loadDraft();
     _loadPrefs();
   }
@@ -82,7 +86,7 @@ class _RecordPageState extends ConsumerState<RecordPage> {
   }
 
   Future<void> _loadDraft() async {
-    final d = await ref.read(activityRepositoryProvider).loadDraft();
+    final d = await _repo.loadDraft();
     if (mounted && d != null) setState(() => _draft = d);
   }
 
@@ -124,7 +128,7 @@ class _RecordPageState extends ConsumerState<RecordPage> {
 
   void _persistDraftIfActive() {
     if (_m.isActive) {
-      ref.read(activityRepositoryProvider).saveDraft(
+      _repo.saveDraft(
             type: _type,
             startedAt: _startedAt,
             totalS: _m.movingSec,
@@ -344,7 +348,7 @@ class _RecordPageState extends ConsumerState<RecordPage> {
       return;
     }
     final ok = choice == 'save';
-    await ref.read(activityRepositoryProvider).deleteDraft();
+    await _repo.deleteDraft();
     if (ok == true) await _save();
     _m.discard();
     _spdKmph = 0;
@@ -370,7 +374,7 @@ class _RecordPageState extends ConsumerState<RecordPage> {
     _posSub = null;
     _ticker?.cancel();
     _liveMapReady = false;
-    await ref.read(activityRepositoryProvider).deleteDraft();
+    await _repo.deleteDraft();
     _m.discard();
     _tracks.clear();
     _spdKmph = 0;
@@ -380,7 +384,7 @@ class _RecordPageState extends ConsumerState<RecordPage> {
   }
 
   Future<void> _save() async {
-    final repo = ref.read(activityRepositoryProvider);
+    final repo = _repo;
     final id = await repo.saveRide(
       name: '$_type骑行',
       type: _type,
