@@ -3,11 +3,14 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:latlong2/latlong.dart' show LatLng;
 
 import '../../data/activity_repository.dart';
 import '../../data/providers.dart';
+import '../../data/route_planner.dart';
 import '../../domain/record/session_machine.dart';
 import '../../theme/app_theme.dart';
+import '../widgets/amap_map_view.dart';
 
 /// 记录页（M1）：真实 GPS 定位驱动（速度/距离/爬升都来自位置流）+ 会话状态机 + 草稿 + 保存。
 class RecordPage extends ConsumerStatefulWidget {
@@ -30,6 +33,11 @@ class _RecordPageState extends ConsumerState<RecordPage> {
 
   // 秒表（与 GPS 解耦：无定位时长照常走）
   Timer? _ticker;
+
+  // 实时地图（当前位置 + 已骑轨迹）
+  final GlobalKey<AmapMapViewState> _liveMapKey = GlobalKey<AmapMapViewState>();
+  bool _liveMapReady = false;
+  DateTime _lastMapRender = DateTime.fromMillisecondsSinceEpoch(0);
 
   // 真实定位
   StreamSubscription<Position>? _posSub;
@@ -108,6 +116,30 @@ class _RecordPageState extends ConsumerState<RecordPage> {
     }
   }
 
+  /// 把已采轨迹（WGS84）与当前位置转成 GCJ-02 后画到高德地图上（节流 2.5s，避免频繁重绘卡顿）
+  void _renderLiveMap({bool force = false}) {
+    final st = _liveMapKey.currentState;
+    if (st == null || !_liveMapReady) return;
+    final now = DateTime.now();
+    if (!force && now.difference(_lastMapRender).inMilliseconds < 2500) return;
+    _lastMapRender = now;
+
+    final pts = _tracks;
+    final stride = pts.length > 300 ? (pts.length / 300).ceil() : 1;
+    final path = <List<double>>[];
+    for (var i = 0; i < pts.length; i += stride) {
+      final g = wgs84ToGcj02(LatLng(pts[i].lat, pts[i].lon));
+      path.add([g.longitude, g.latitude]);
+    }
+    List<double>? myLoc;
+    final lp = _last;
+    if (lp != null) {
+      final g = wgs84ToGcj02(LatLng(lp.latitude, lp.longitude));
+      myLoc = [g.longitude, g.latitude];
+    }
+    st.render(path: path, myLoc: myLoc);
+  }
+
   void _onPos(Position pos) {
     if (_m.phase == SessionPhase.recording) {
       double distKm = 0;
@@ -140,7 +172,10 @@ class _RecordPageState extends ConsumerState<RecordPage> {
       }
       if (_autoPause && spd < 0.5) _pause(); // 速度≈0 自动暂停
       _gpsReady = true;
-      if (mounted) setState(() {});
+      if (mounted) {
+        setState(() {});
+        _renderLiveMap();
+      }
     } else {
       _last = pos;
     }
@@ -171,6 +206,7 @@ class _RecordPageState extends ConsumerState<RecordPage> {
     if (_m.phase != SessionPhase.recording) return;
     _m.pause();
     _posSub?.pause();
+    _renderLiveMap(force: true);
     setState(() {});
   }
 
@@ -192,6 +228,7 @@ class _RecordPageState extends ConsumerState<RecordPage> {
   Future<void> _stop() async {
     _posSub?.cancel();
     _posSub = null;
+    _liveMapReady = false;
     _m.finish();
     setState(() {});
     final ok = await showDialog<bool>(
@@ -333,7 +370,8 @@ class _RecordPageState extends ConsumerState<RecordPage> {
   Widget _live() {
     final paused = _m.phase == SessionPhase.paused;
     final avg = _m.movingSec > 0 ? _m.distanceKm / (_m.movingSec / 3600) : 0.0;
-    return Column(
+    return SingleChildScrollView(
+      child: Column(
       children: [
         Text(_fmtSec(_m.movingSec), style: _h1.copyWith(fontSize: 54)),
         const SizedBox(height: 6),
@@ -360,7 +398,30 @@ class _RecordPageState extends ConsumerState<RecordPage> {
         const SizedBox(height: 6),
         Text('爬升 ${_m.elevGainM.round()} m · 圈数 ${_m.lapCount}',
             style: const TextStyle(fontSize: 12, color: AppTheme.txt2)),
-        const SizedBox(height: 20),
+        const SizedBox(height: 12),
+        // 实时地图：当前位置 + 已骑轨迹
+        SizedBox(
+          height: 220,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: AmapMapView(
+              key: _liveMapKey,
+              initialZoom: 16,
+              onTapLngLat: (lng, lat) {},
+              onError: (msg) {},
+              onReady: () {
+                _liveMapReady = true;
+                final lp = _last;
+                if (lp != null) {
+                  final g = wgs84ToGcj02(LatLng(lp.latitude, lp.longitude));
+                  _liveMapKey.currentState?.moveTo(g.longitude, g.latitude);
+                }
+                _renderLiveMap(force: true);
+              },
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -378,6 +439,7 @@ class _RecordPageState extends ConsumerState<RecordPage> {
           ],
         ),
       ],
+      ),
     );
   }
 
