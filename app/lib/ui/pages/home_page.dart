@@ -44,6 +44,7 @@ class _HomePageState extends ConsumerState<HomePage> {
       );
 
   Widget _overviewCard(List<k.RideLite> rides) {
+    final u = ref.watch(unitPrefsProvider);
     final now = DateTime.now();
     final kinds = [PeriodKind.today, PeriodKind.week, PeriodKind.month];
     final s = k.sumPeriod(rides, now, kinds[_period]);
@@ -85,7 +86,7 @@ class _HomePageState extends ConsumerState<HomePage> {
           const SizedBox(height: 14),
           Row(
             children: [
-              _ovItem('距离 km', s.km.toStringAsFixed(1)),
+              _ovItem('距离 ${u.distUnit}', u.distValue(s.km)),
               _ovItem('时长 min', '${s.min.round()}'),
               _ovItem('爬升 m', '${s.elev.round()}'),
             ],
@@ -158,14 +159,15 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 
   Widget _row(BuildContext context, k.RideLite r) {
+    final u = ref.watch(unitPrefsProvider);
     final date =
         '${r.startAt.month}月${r.startAt.day}日 ${r.startAt.hour}:${r.startAt.minute.toString().padLeft(2, '0')}';
-    final avgSpeed = r.durationMin > 0 ? (r.distanceKm / (r.durationMin / 60)) : 0;
+    final avgSpeed = r.durationMin > 0 ? (r.distanceKm / (r.durationMin / 60)) : 0.0;
     return ListTile(
       leading: const Icon(Icons.directions_bike, color: AppTheme.accent),
       title: Text('骑行 · $date', style: const TextStyle(fontSize: 14)),
-      subtitle: Text('${r.distanceKm.toStringAsFixed(1)} km · 爬升 ${r.elevGainM.round()} m'),
-      trailing: Text('${avgSpeed.toStringAsFixed(1)} km/h',
+      subtitle: Text('${u.dist(r.distanceKm)} · 爬升 ${u.elev(r.elevGainM)}'),
+      trailing: Text(u.speed(avgSpeed),
           style: const TextStyle(fontSize: 13, color: AppTheme.txt2)),
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => ActivityDetailPage(rideId: r.id)),

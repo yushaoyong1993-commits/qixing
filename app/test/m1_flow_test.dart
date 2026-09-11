@@ -13,7 +13,10 @@ void main() {
     addTearDown(db.close);
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [databaseProvider.overrideWithValue(db)],
+        overrides: [
+          databaseProvider.overrideWithValue(db),
+          settingsProvider.overrideWith((ref) => Stream.value(const <String, String>{})),
+        ],
         child: const MaterialApp(home: Scaffold(body: RecordPage())),
       ),
     );

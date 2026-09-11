@@ -53,6 +53,23 @@ class _RecordPageState extends ConsumerState<RecordPage> {
   void initState() {
     super.initState();
     _loadDraft();
+    _loadPrefs();
+  }
+
+  /// 读取设置页里的"记录默认值"
+  Future<void> _loadPrefs() async {
+    try {
+      final repo = ref.read(settingsRepositoryProvider);
+      final t = await repo.get('default_ride_type');
+      final ap = await repo.get('auto_pause');
+      final al = await repo.get('auto_lap');
+      if (!mounted) return;
+      setState(() {
+        if (t != null && _types.contains(t)) _type = t;
+        if (ap != null) _autoPause = ap == 'true';
+        if (al != null) _autoLap = al == 'true';
+      });
+    } catch (_) {}
   }
 
   Future<void> _loadDraft() async {
@@ -236,9 +253,9 @@ class _RecordPageState extends ConsumerState<RecordPage> {
       builder: (c) => AlertDialog(
         title: const Text('骑行完成 🎉'),
         content: Text(
-          '类型 $_type\n距离 ${_m.distanceKm.toStringAsFixed(1)} km\n'
+          '类型 $_type\n距离 ${ref.read(unitPrefsProvider).dist(_m.distanceKm)}\n'
           '时长 ${_fmtSec(_m.movingSec)}\n'
-          '爬升 ${_m.elevGainM.round()} m · 圈数 ${_m.lapCount}',
+          '爬升 ${ref.read(unitPrefsProvider).elev(_m.elevGainM)} · 圈数 ${_m.lapCount}',
           textAlign: TextAlign.center,
         ),
         actions: [
@@ -307,7 +324,8 @@ class _RecordPageState extends ConsumerState<RecordPage> {
       child: ListTile(
         leading: const Icon(Icons.history, color: AppTheme.accentInk),
         title: Text('未完成的草稿（${d.type}）', style: const TextStyle(fontSize: 13.5)),
-        subtitle: Text('${d.distanceKm.toStringAsFixed(1)} km · ${_fmtSec(d.totalS)}'),
+        subtitle: Text(
+            '${ref.read(unitPrefsProvider).dist(d.distanceKm)} · ${_fmtSec(d.totalS)}'),
         trailing: ElevatedButton(
           onPressed: () => _start(resume: true),
           style: ElevatedButton.styleFrom(backgroundColor: AppTheme.accent, foregroundColor: Colors.white),
@@ -368,6 +386,7 @@ class _RecordPageState extends ConsumerState<RecordPage> {
   }
 
   Widget _live() {
+    final u = ref.watch(unitPrefsProvider);
     final paused = _m.phase == SessionPhase.paused;
     final avg = _m.movingSec > 0 ? _m.distanceKm / (_m.movingSec / 3600) : 0.0;
     return SingleChildScrollView(
@@ -390,9 +409,9 @@ class _RecordPageState extends ConsumerState<RecordPage> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
-            _stat('速度 km/h', _spdKmph.toStringAsFixed(1)),
-            _stat('距离 km', _m.distanceKm.toStringAsFixed(1)),
-            _stat('均速 km/h', avg.toStringAsFixed(1)),
+            _stat('速度 ${u.metric ? 'km/h' : 'mph'}', u.speedValue(_spdKmph)),
+            _stat('距离 ${u.distUnit}', u.distValue(_m.distanceKm)),
+            _stat('均速 ${u.metric ? 'km/h' : 'mph'}', u.speedValue(avg)),
           ],
         ),
         const SizedBox(height: 6),

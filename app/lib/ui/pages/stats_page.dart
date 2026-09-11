@@ -76,6 +76,7 @@ class _StatsPageState extends ConsumerState<StatsPage> {
   }
 
   Widget _tiles(k.PeriodStats s) {
+    final u = ref.watch(unitPrefsProvider);
     return Container(
       margin: const EdgeInsets.only(top: 12),
       padding: const EdgeInsets.symmetric(vertical: 16),
@@ -87,7 +88,7 @@ class _StatsPageState extends ConsumerState<StatsPage> {
       child: Row(
         children: [
           _tile('${s.count}', '次数'),
-          _tile(s.km.toStringAsFixed(1), '距离 km'),
+          _tile(u.distValue(s.km), '距离 ${u.distUnit}'),
           _tile('${s.min.round()}', '时长 min'),
           _tile('${s.elev.round()}', '爬升 m'),
         ],

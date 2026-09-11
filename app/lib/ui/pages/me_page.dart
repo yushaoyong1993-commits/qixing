@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/providers.dart';
 import '../../domain/stats/aggregate.dart' as k;
 import '../../theme/app_theme.dart';
+import 'settings_page.dart';
 
 /// 我的（M1）：本地骑行者 + 真实数据总览 + 功能入口。
 class MePage extends ConsumerWidget {
@@ -12,6 +13,7 @@ class MePage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final rides = ref.watch(ridesProvider).valueOrNull ?? const <k.RideLite>[];
+    final u = ref.watch(unitPrefsProvider);
     var km = 0.0, min = 0.0, elev = 0.0;
     for (final r in rides) {
       km += r.distanceKm;
@@ -50,9 +52,9 @@ class MePage extends ConsumerWidget {
             ),
             child: Row(
               children: [
-                _tile(km.toStringAsFixed(1), '总里程 km'),
+                _tile(u.distValue(km), '总里程 ${u.distUnit}'),
                 _tile(_fmtMin(min), '总时长'),
-                _tile('${elev.round()}', '总爬升 m'),
+                _tile(u.elevValue(elev), '总爬升 ${u.elevUnit}'),
                 _tile('${rides.length}', '总次数'),
               ],
             ),
@@ -62,7 +64,9 @@ class MePage extends ConsumerWidget {
           const SizedBox(height: 6),
           _entry(context, Icons.import_export, '导入骑行数据', '待接入（IO-01）'),
           _entry(context, Icons.ios_share, '导出数据', '待接入（IO-05）'),
-          _entry(context, Icons.settings_outlined, '设置', '待接入'),
+          _entry(context, Icons.settings_outlined, '设置', '单位 / 记录默认值 / 数据 / 关于',
+              onTap: () => Navigator.of(context)
+                  .push(MaterialPageRoute(builder: (_) => const SettingsPage()))),
         ],
       ),
     );
@@ -78,7 +82,9 @@ class MePage extends ConsumerWidget {
         ),
       );
 
-  Widget _entry(BuildContext context, IconData icon, String title, String sub) => Card(
+  Widget _entry(BuildContext context, IconData icon, String title, String sub,
+          {VoidCallback? onTap}) =>
+      Card(
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
@@ -89,6 +95,8 @@ class MePage extends ConsumerWidget {
           leading: Icon(icon, color: AppTheme.accentInk),
           title: Text(title, style: const TextStyle(fontSize: 14)),
           subtitle: Text(sub, style: const TextStyle(fontSize: 11, color: AppTheme.txt3)),
+          trailing: onTap == null ? null : const Icon(Icons.chevron_right, color: AppTheme.txt3),
+          onTap: onTap,
         ),
       );
 

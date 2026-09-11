@@ -13,6 +13,7 @@ class ActivityListPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final rides = ref.watch(ridesProvider).valueOrNull ?? const <k.RideLite>[];
+    final u = ref.watch(unitPrefsProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('活动')),
       body: rides.isEmpty
@@ -23,12 +24,12 @@ class ActivityListPage extends ConsumerWidget {
               separatorBuilder: (_, _) => const Divider(height: 1),
               itemBuilder: (_, i) {
                 final r = rides[i];
-                final speed = r.durationMin > 0 ? (r.distanceKm / (r.durationMin / 60)) : 0;
+                final speed = r.durationMin > 0 ? (r.distanceKm / (r.durationMin / 60)) : 0.0;
                 return ListTile(
                   leading: const Icon(Icons.directions_bike, color: AppTheme.accent),
                   title: Text('${r.startAt.year}-${r.startAt.month}-${r.startAt.day} ${r.startAt.hour}:${r.startAt.minute.toString().padLeft(2, '0')}'),
-                  subtitle: Text('${r.distanceKm.toStringAsFixed(1)} km · 爬升 ${r.elevGainM.round()} m'),
-                  trailing: Text('${speed.toStringAsFixed(1)} km/h',
+                  subtitle: Text('${u.dist(r.distanceKm)} · 爬升 ${u.elev(r.elevGainM)}'),
+                  trailing: Text(u.speed(speed),
                       style: const TextStyle(fontSize: 13, color: AppTheme.txt2)),
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => ActivityDetailPage(rideId: r.id)),

@@ -61,6 +61,7 @@ class _ActivityDetailPageState extends ConsumerState<ActivityDetailPage> {
   @override
   Widget build(BuildContext context) {
     final rides = ref.watch(ridesProvider).valueOrNull ?? const <k.RideLite>[];
+    final u = ref.watch(unitPrefsProvider);
     k.RideLite? r;
     for (final x in rides) {
       if (x.id == widget.rideId) r = x;
@@ -70,7 +71,7 @@ class _ActivityDetailPageState extends ConsumerState<ActivityDetailPage> {
         body: Center(child: Text('活动不存在', style: TextStyle(color: AppTheme.txt3))),
       );
     }
-    final speed = r.durationMin > 0 ? (r.distanceKm / (r.durationMin / 60)) : 0;
+    final speed = r.durationMin > 0 ? (r.distanceKm / (r.durationMin / 60)) : 0.0;
     return Scaffold(
       appBar: AppBar(
         title: const Text('骑行详情'),
@@ -86,10 +87,10 @@ class _ActivityDetailPageState extends ConsumerState<ActivityDetailPage> {
         children: [
           _item('日期时间',
               '${r.startAt.year}-${r.startAt.month}-${r.startAt.day} ${r.startAt.hour}:${r.startAt.minute.toString().padLeft(2, '0')}'),
-          _item('距离', '${r.distanceKm.toStringAsFixed(1)} km'),
+          _item('距离', u.dist(r.distanceKm)),
           _item('时长(移动)', _fmtSec(r.durationMin * 60)),
-          _item('均速', '${speed.toStringAsFixed(1)} km/h'),
-          _item('累计爬升', '${r.elevGainM.round()} m'),
+          _item('均速', u.speed(speed)),
+          _item('累计爬升', u.elev(r.elevGainM)),
           const SizedBox(height: 12),
           const Text('轨迹', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
           const SizedBox(height: 8),
