@@ -31,7 +31,8 @@ class AmapMapView extends StatefulWidget {
 }
 
 class AmapMapViewState extends State<AmapMapView> with WidgetsBindingObserver {
-  late final WebViewController _c;
+  WebViewController? _c;
+  bool _unavailable = false; // 平台无 WebView 实现（如单元测试）时降级为占位
   bool _ready = false;
   List<List<double>> _lastAnchors = const [];
   List<List<double>> _lastPath = const [];
@@ -41,11 +42,23 @@ class AmapMapViewState extends State<AmapMapView> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _c = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(const Color(0xFFF2F2F5))
-      ..addJavaScriptChannel('Basho', onMessageReceived: _onJsMessage)
-      ..loadHtmlString(_html(), baseUrl: 'https://www.amap.com/');
+    try {
+      final c = WebViewController()
+        ..setJavaScriptMode(JavaScriptMode.unrestricted)
+        ..setBackgroundColor(const Color(0xFFF2F2F5))
+        ..addJavaScriptChannel('Basho', onMessageReceived: _onJsMessage)
+        ..loadHtmlString(_html(), baseUrl: 'https://www.amap.com/');
+      _c = c;
+    } catch (_) {
+      // 无 WebView 平台实现（单元测试等）→ 占位降级，避免抛异常
+      _unavailable = true;
+    }
+  }
+
+  void _js(String code) {
+    final c = _c;
+    if (c == null || !_ready) return;
+    c.runJavaScript(code);
   }
 
   @override
@@ -61,21 +74,29 @@ class AmapMapViewState extends State<AmapMapView> with WidgetsBindingObserver {
   }
 
   /// 强制刷新（resize + 保持当前层级）
-  void refresh() {
-    if (!_ready) return;
-    _c.runJavaScript('refreshMap();');
-  }
+  void refresh() => _js('refreshMap();');
 
   /// 重建地图：WebView 被其它页面覆盖后，高德底图 Canvas 上下文可能丢失且 resize 无法恢复，
   /// 此时销毁地图重新创建（JS 会再次 post ready，随后自动恢复上次内容）。
   void rebuild() {
     if (!_ready) return;
     _ready = false;
-    _c.runJavaScript('rebuildMap();');
+    _js('rebuildMap();');
   }
 
   @override
-  Widget build(BuildContext context) => WebViewWidget(controller: _c);
+  Widget build(BuildContext context) {
+    final c = _c;
+    if (_unavailable || c == null) {
+      return Container(
+        color: const Color(0xFFF2F2F5),
+        alignment: Alignment.center,
+        child: const Text('地图不可用（缺少 WebView 平台实现）',
+            style: TextStyle(fontSize: 12, color: Color(0xFF9898A3))),
+      );
+    }
+    return WebViewWidget(controller: c);
+  }
 
   void _onJsMessage(JavaScriptMessage m) {
     try {
@@ -89,7 +110,7 @@ class AmapMapViewState extends State<AmapMapView> with WidgetsBindingObserver {
           if (_lastAnchors.isNotEmpty || _lastPath.isNotEmpty || _lastMyLoc != null) {
             final payload =
                 jsonEncode({'anchors': _lastAnchors, 'path': _lastPath, 'myLoc': _lastMyLoc});
-            _c.runJavaScript('renderMap($payload);');
+            _js('renderMap($payload);');
           }
           break;
         case 'tap':
@@ -113,7 +134,7 @@ class AmapMapViewState extends State<AmapMapView> with WidgetsBindingObserver {
     _lastMyLoc = myLoc;
     if (!_ready) return;
     final payload = jsonEncode({'anchors': anchors, 'path': path, 'myLoc': myLoc});
-    _c.runJavaScript('renderMap($payload);');
+    _js('renderMap($payload);');
   }
 
   List<double>? _pendingCenter;
@@ -123,14 +144,14 @@ class AmapMapViewState extends State<AmapMapView> with WidgetsBindingObserver {
       _pendingCenter = [lng, lat, zoom]; // 地图未就绪 → 排队，就绪后自动应用
       return;
     }
-    _c.runJavaScript('moveTo($lng, $lat, $zoom);');
+    _js('moveTo($lng, $lat, $zoom);');
   }
 
   void _applyPending() {
     final p = _pendingCenter;
     if (p == null) return;
     _pendingCenter = null;
-    _c.runJavaScript('moveTo(${p[0]}, ${p[1]}, ${p[2]});');
+    _js('moveTo(${p[0]}, ${p[1]}, ${p[2]});');
   }
 
   String _html() => '''
