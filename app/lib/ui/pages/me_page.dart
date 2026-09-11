@@ -4,7 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/providers.dart';
 import '../../domain/stats/aggregate.dart' as k;
 import '../../theme/app_theme.dart';
+import 'activity_list_page.dart';
 import 'settings_page.dart';
+import 'stats_page.dart';
+import '../widgets/not_ready.dart';
 
 /// 我的（M1）：本地骑行者 + 真实数据总览 + 功能入口。
 class MePage extends ConsumerWidget {
@@ -62,11 +65,66 @@ class MePage extends ConsumerWidget {
           const SizedBox(height: 16),
           const Text('功能入口', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
           const SizedBox(height: 6),
-          _entry(context, Icons.import_export, '导入骑行数据', '待接入（IO-01）'),
-          _entry(context, Icons.ios_share, '导出数据', '待接入（IO-05）'),
-          _entry(context, Icons.settings_outlined, '设置', '单位 / 记录默认值 / 数据 / 关于',
-              onTap: () => Navigator.of(context)
-                  .push(MaterialPageRoute(builder: (_) => const SettingsPage()))),
+          Card(
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: const BorderSide(color: AppTheme.line),
+            ),
+            child: Column(
+              children: [
+                EntryTile(
+                  icon: Icons.insights,
+                  title: '统计概览',
+                  trailingText: '›',
+                  onTap: () => Navigator.of(context)
+                      .push(MaterialPageRoute(builder: (_) => const StatsPage())),
+                ),
+                const Divider(height: 1),
+                EntryTile(
+                  icon: Icons.list_alt,
+                  title: '全部活动',
+                  trailingText: '›',
+                  onTap: () => Navigator.of(context)
+                      .push(MaterialPageRoute(builder: (_) => const ActivityListPage())),
+                ),
+                const Divider(height: 1),
+                const EntryTile(
+                    icon: Icons.pedal_bike, title: '我的装备', notReady: true, trailingText: '›'),
+                const Divider(height: 1),
+                const EntryTile(
+                    icon: Icons.download, title: '导入骑行数据（GPX/FIT）', notReady: true, trailingText: '›'),
+                const Divider(height: 1),
+                const EntryTile(
+                    icon: Icons.upload, title: '导出数据（GPX）', notReady: true, trailingText: '›'),
+                const Divider(height: 1),
+                EntryTile(
+                  icon: Icons.settings_outlined,
+                  title: '设置',
+                  subtitle: '单位 / 记录默认值 / 后台记录 / 数据 / 关于',
+                  trailingText: '›',
+                  onTap: () => Navigator.of(context)
+                      .push(MaterialPageRoute(builder: (_) => const SettingsPage())),
+                ),
+                const Divider(height: 1),
+                EntryTile(
+                  icon: Icons.info_outline,
+                  title: '关于跋涉',
+                  trailingText: '›',
+                  onTap: () => showAboutDialog(
+                    context: context,
+                    applicationName: '跋涉',
+                    applicationVersion: '0.1.0 · M1',
+                    children: const [
+                      Text('本地优先的骑行记录 App：GPS 记录、统计、地图路线。\n'
+                          '数据全部保存在本机（SQLite），无需登录、不上传。\n'
+                          '地图与骑行路线规划由高德提供。'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -79,24 +137,6 @@ class MePage extends ConsumerWidget {
             const SizedBox(height: 2),
             Text(l, style: const TextStyle(fontSize: 10.5, color: AppTheme.txt3)),
           ],
-        ),
-      );
-
-  Widget _entry(BuildContext context, IconData icon, String title, String sub,
-          {VoidCallback? onTap}) =>
-      Card(
-        elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: const BorderSide(color: AppTheme.line),
-        ),
-        margin: const EdgeInsets.symmetric(vertical: 4),
-        child: ListTile(
-          leading: Icon(icon, color: AppTheme.accentInk),
-          title: Text(title, style: const TextStyle(fontSize: 14)),
-          subtitle: Text(sub, style: const TextStyle(fontSize: 11, color: AppTheme.txt3)),
-          trailing: onTap == null ? null : const Icon(Icons.chevron_right, color: AppTheme.txt3),
-          onTap: onTap,
         ),
       );
 

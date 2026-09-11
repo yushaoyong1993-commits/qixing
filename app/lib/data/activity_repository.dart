@@ -163,7 +163,8 @@ class ActivityRepository {
         distanceKm: a.distanceM / 1000,
         durationMin: a.movingS / 60,
         elevGainM: a.elevGainM,
-      );
+        name: a.name,
+        type: a.type,);
 }
 
 /// 记录会话草稿（用于崩溃恢复）。

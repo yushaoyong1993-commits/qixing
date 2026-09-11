@@ -8,6 +8,7 @@ import '../../data/route_planner.dart';
 import '../../data/route_repository.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/amap_map_view.dart';
+import '../widgets/not_ready.dart';
 
 /// 定位（GPS WGS84 → 高德 GCJ-02），供地图页与路线页共用。
 /// 返回 GCJ-02 的 [lng, lat]；失败返回 null（silent=true 时不弹提示）。
@@ -137,8 +138,49 @@ class _MapPageState extends ConsumerState<MapPage> {
       ),
       body: Column(
         children: [
+          // 搜索/规划入口（原型 fake-search）
+          InkWell(
+            onTap: () => showNotReady(context, '搜索地点 / 起终点规划'),
+            child: Container(
+              margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: AppTheme.card2,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.search, size: 18, color: AppTheme.txt3),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text('搜索地点，或规划骑行路线…（未完成）',
+                        style: TextStyle(fontSize: 12.5, color: AppTheme.txt3)),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // 底图样式切换（原型 seg-map；高德卫星层未接入）
+          Padding(
+            padding: const EdgeInsets.only(left: 12, top: 8),
+            child: Row(
+              children: [
+                ChoiceChip(
+                  label: const Text('标准', style: TextStyle(fontSize: 12)),
+                  selected: true,
+                  onSelected: (_) {},
+                ),
+                const SizedBox(width: 6),
+                ChoiceChip(
+                  label: const Text('卫星（未完成）', style: TextStyle(fontSize: 12)),
+                  selected: false,
+                  onSelected: (_) => showNotReady(context, '卫星底图'),
+                ),
+              ],
+            ),
+          ),
           SizedBox(
-            height: 300,
+            height: 280,
             child: AmapMapView(
               key: _mapKey,
               initialZoom: 14,
@@ -182,7 +224,7 @@ class _MapPageState extends ConsumerState<MapPage> {
                           onPressed: () => _confirmDelete(context, ref, r),
                         ),
                         // ⑤ 点击已保存路线 → 查看/编辑（改名、继续绘制）
-                        onTap: () => _openEditor(route: r),
+                        onTap: () => _showRouteSheet(context, ref, r),
                       );
                     },
                   ),
@@ -191,6 +233,88 @@ class _MapPageState extends ConsumerState<MapPage> {
       ),
     );
   }
+
+  /// 路线详情面板（原型 route-overlay）：距离/爬升/预计时长/类型 + 沿此路线骑行/编辑/导出
+  void _showRouteSheet(BuildContext context, WidgetRef ref, RouteModel r) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (c) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(r.name,
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 4),
+            const Text('我的路线 · 高德地图定制',
+                style: TextStyle(fontSize: 11.5, color: AppTheme.txt3)),
+            const SizedBox(height: 12),
+            _sheetRow('距离', '${r.distKm.toStringAsFixed(2)} km'),
+            _sheetRow('累计爬升', '—（未完成）'),
+            _sheetRow('预计时长', '—（未完成）'),
+            _sheetRow('类型', '骑行路线'),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton(
+                    style: FilledButton.styleFrom(backgroundColor: AppTheme.accent),
+                    onPressed: () {
+                      Navigator.pop(c);
+                      showNotReady(context, '沿此路线骑行（导航）');
+                    },
+                    child: const Text('沿此路线骑行（未完成）'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () {
+                      Navigator.pop(c);
+                      _openEditor(route: r);
+                    },
+                    child: const Text('编辑路线'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            if (r.points.length >= 2)
+              SizedBox(
+                height: 150,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: AmapMapView(
+                    initialZoom: 14,
+                    onTapLngLat: (lng, lat) {},
+                    onReady: () {},
+                    onError: (msg) {},
+                  ),
+                ),
+              ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () => showNotReady(context, '导出 GPX'),
+              child: const Text('导出 GPX（未完成）',
+                  style: TextStyle(fontSize: 12, color: AppTheme.txt3)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _sheetRow(String k, String v) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          children: [
+            Expanded(child: Text(k, style: const TextStyle(fontSize: 13, color: AppTheme.txt2))),
+            Text(v, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+          ],
+        ),
+      );
 
   /// 打开定制/编辑路线页；返回后主动刷新地图（Android WebView 被覆盖后需 resize 才会重绘）
   Future<void> _openEditor({RouteModel? route}) async {

@@ -298,28 +298,64 @@ class _RecordPageState extends ConsumerState<RecordPage> {
           '用时 ${_fmtSec(_m.movingSec)}');
     }
     setState(() {});
-    final ok = await showDialog<bool>(
+    final choice = await showDialog<String>(
       context: context,
       builder: (c) => AlertDialog(
         title: const Text('骑行完成 🎉'),
         content: Text(
           '类型 $_type\n距离 ${ref.read(unitPrefsProvider).dist(_m.distanceKm)}\n'
           '时长 ${_fmtSec(_m.movingSec)}\n'
-          '爬升 ${ref.read(unitPrefsProvider).elev(_m.elevGainM)} · 圈数 ${_m.lapCount}',
+          '爬升 ${ref.read(unitPrefsProvider).elev(_m.elevGainM)} · 圈数 ${_m.lapCount}\n'
+          '平均心率（未完成）',
           textAlign: TextAlign.center,
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('丢弃')),
-          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('保存')),
+          TextButton(onPressed: () => Navigator.pop(c, 'discard'), child: const Text('丢弃')),
+          TextButton(onPressed: () => Navigator.pop(c, 'again'), child: const Text('再骑一段')),
+          FilledButton(onPressed: () => Navigator.pop(c, 'save'), child: const Text('保存')),
         ],
       ),
     );
+    if (choice == 'again') {
+      // 回到记录中，继续累加（数据保留，草稿不删）
+      _m.resumeFromSummary();
+      _last = null;
+      _initLoc();
+      setState(() {});
+      return;
+    }
+    final ok = choice == 'save';
     await ref.read(activityRepositoryProvider).deleteDraft();
     if (ok == true) await _save();
     _m.discard();
     _spdKmph = 0;
     _last = null;
     setState(() {});
+  }
+
+  Future<void> _abort() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('放弃本次骑行？'),
+        content: const Text('当前记录将被丢弃，不会保存。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('放弃')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    _posSub?.cancel();
+    _posSub = null;
+    _ticker?.cancel();
+    _liveMapReady = false;
+    await ref.read(activityRepositoryProvider).deleteDraft();
+    _m.discard();
+    _tracks.clear();
+    _spdKmph = 0;
+    _last = null;
+    if (mounted) setState(() {});
   }
 
   Future<void> _save() async {
@@ -353,13 +389,27 @@ class _RecordPageState extends ConsumerState<RecordPage> {
   @override
   Widget build(BuildContext context) {
     final live = _m.isActive || _m.phase == SessionPhase.summary;
+    if (live) {
+      // 实时视图直接占满并允许滚动（避免小屏溢出）
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          child: _live(),
+        ),
+      );
+    }
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.all(24),
-        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          if (!live && _draft != null) _draftBanner(),
-          if (!live) _prepare() else _live(),
-        ]),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (_draft != null) _draftBanner(),
+              _prepare(),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -395,6 +445,9 @@ class _RecordPageState extends ConsumerState<RecordPage> {
           const SizedBox(height: 6),
           const Text('真实 GPS 定位 · 速度/距离/爬升均来自手机定位',
               style: TextStyle(fontSize: 12, color: AppTheme.txt3)),
+          const SizedBox(height: 4),
+          const Text('后台锁屏持续记录 · 心率/踏频/功率外设接入（未完成）',
+              style: TextStyle(fontSize: 11, color: AppTheme.txt3)),
           const SizedBox(height: 16),
           Row(
             children: [
@@ -442,6 +495,9 @@ class _RecordPageState extends ConsumerState<RecordPage> {
     return SingleChildScrollView(
       child: Column(
       children: [
+        Text('● REC ${_fmtSec(_m.movingSec)}',
+            style: const TextStyle(fontSize: 12, color: AppTheme.accent, letterSpacing: 1)),
+        const SizedBox(height: 2),
         Text(_fmtSec(_m.movingSec), style: _h1.copyWith(fontSize: 54)),
         const SizedBox(height: 6),
         Text(
@@ -465,7 +521,9 @@ class _RecordPageState extends ConsumerState<RecordPage> {
           ],
         ),
         const SizedBox(height: 6),
-        Text('爬升 ${_m.elevGainM.round()} m · 圈数 ${_m.lapCount}',
+        Text(
+            '爬升 ${_m.elevGainM.round()} m · 圈数 ${_m.lapCount} · '
+            '千卡 ${(_m.distanceKm * 24).round()} · 心率（未完成）',
             style: const TextStyle(fontSize: 12, color: AppTheme.txt2)),
         const SizedBox(height: 12),
         // 实时地图：当前位置 + 已骑轨迹
@@ -495,17 +553,30 @@ class _RecordPageState extends ConsumerState<RecordPage> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             IconButton.filledTonal(
+              onPressed: () {
+                if (_m.lap()) setState(() {});
+              },
+              icon: const Icon(Icons.flag_outlined),
+              tooltip: '计圈',
+            ),
+            const SizedBox(width: 16),
+            IconButton.filledTonal(
               onPressed: _pauseOrResume,
               icon: Icon(paused ? Icons.play_arrow : Icons.pause),
               tooltip: paused ? '继续' : '暂停',
             ),
-            const SizedBox(width: 24),
+            const SizedBox(width: 16),
             IconButton.filled(
               onPressed: _stop,
               icon: const Icon(Icons.stop),
               style: IconButton.styleFrom(backgroundColor: AppTheme.accent, iconSize: 32, padding: const EdgeInsets.all(14)),
             ),
           ],
+        ),
+        TextButton(
+          onPressed: _abort,
+          child: const Text('放弃本次骑行',
+              style: TextStyle(fontSize: 12, color: AppTheme.txt3)),
         ),
       ],
       ),

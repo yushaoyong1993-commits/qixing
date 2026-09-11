@@ -8,6 +8,7 @@ import '../../data/route_planner.dart';
 import '../../domain/stats/aggregate.dart' as k;
 import '../../theme/app_theme.dart';
 import '../widgets/amap_map_view.dart';
+import '../widgets/not_ready.dart';
 
 /// 活动详情：指标 + **真实轨迹（高德地图显示）** + 删除。
 class ActivityDetailPage extends ConsumerStatefulWidget {
@@ -76,6 +77,10 @@ class _ActivityDetailPageState extends ConsumerState<ActivityDetailPage> {
       appBar: AppBar(
         title: const Text('骑行详情'),
         actions: [
+          TextButton(
+            onPressed: () => showNotReady(context, '编辑活动（名称/类型/备注）'),
+            child: const Text('编辑（未完成）', style: TextStyle(fontSize: 12)),
+          ),
           IconButton(
             icon: const Icon(Icons.delete_outline),
             onPressed: () => _confirmDelete(context, r!.id),
@@ -85,12 +90,17 @@ class _ActivityDetailPageState extends ConsumerState<ActivityDetailPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          _item('类型', r.type),
           _item('日期时间',
               '${r.startAt.year}-${r.startAt.month}-${r.startAt.day} ${r.startAt.hour}:${r.startAt.minute.toString().padLeft(2, '0')}'),
           _item('距离', u.dist(r.distanceKm)),
           _item('时长(移动)', _fmtSec(r.durationMin * 60)),
           _item('均速', u.speed(speed)),
           _item('累计爬升', u.elev(r.elevGainM)),
+          const SizedBox(height: 16),
+          _placeholderSection('海拔 / 速度曲线（未完成）', '时间轴 / 距离轴切换；拖动取点'),
+          const SizedBox(height: 12),
+          _placeholderSection('分段 / 计圈（未完成）', '每 5km 自动计圈，分段列表与对比'),
           const SizedBox(height: 12),
           const Text('轨迹', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
           const SizedBox(height: 8),
@@ -153,6 +163,24 @@ class _ActivityDetailPageState extends ConsumerState<ActivityDetailPage> {
       Navigator.pop(context);
     }
   }
+
+  /// 未完成区块占位（原型有、功能待做）
+  Widget _placeholderSection(String title, String hint) => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppTheme.card2,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: const TextStyle(fontSize: 13, color: AppTheme.txt2)),
+            const SizedBox(height: 4),
+            Text(hint, style: const TextStyle(fontSize: 11, color: AppTheme.txt3)),
+          ],
+        ),
+      );
 
   Widget _item(String label, String value, {String? sub}) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),

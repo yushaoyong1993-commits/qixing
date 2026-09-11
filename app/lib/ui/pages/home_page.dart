@@ -31,11 +31,73 @@ class _HomePageState extends ConsumerState<HomePage> {
           _HeroStartButton(onPressed: () => _coming(context)),
           const SizedBox(height: 12),
           _cardLink(context,_overviewCard(rides)),
+          if (rides.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _lastRideCard(rides.first),
+          ],
           const SizedBox(height: 18),
           _recent(rides),
         ],
       ),
     );
+  }
+
+  /// 上次骑行卡（原型 lastCard）：名称/时间/距离/时长/爬升 + 轨迹缩略图
+  Widget _lastRideCard(k.RideLite r) {
+    final u = ref.watch(unitPrefsProvider);
+    final d = r.startAt;
+    final date =
+        '${d.month}-${d.day} ${d.hour}:${d.minute.toString().padLeft(2, '0')}';
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.card,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.line),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 84,
+            height: 62,
+            decoration: BoxDecoration(
+              color: AppTheme.card2,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            alignment: Alignment.center,
+            child: const Text('轨迹缩略图\n（未完成）',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 9.5, color: AppTheme.txt3)),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('上次骑行',
+                    style: TextStyle(fontSize: 11, color: AppTheme.txt3)),
+                const SizedBox(height: 2),
+                Text(r.name,
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 2),
+                Text(date, style: const TextStyle(fontSize: 11.5, color: AppTheme.txt3)),
+                const SizedBox(height: 4),
+                Text('${u.dist(r.distanceKm)} · ${_fmtSec(r.durationMin * 60)} · '
+                    '${u.elev(r.elevGainM)} ↑',
+                    style: const TextStyle(fontSize: 11.5, color: AppTheme.txt2)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _fmtSec(double seconds) {
+    final t = seconds.round();
+    final h = t ~/ 3600, m = (t % 3600) ~/ 60, sec = t % 60;
+    String p(int v) => v.toString().padLeft(2, '0');
+    return h > 0 ? '${p(h)}:${p(m)}:${p(sec)}' : '${p(m)}:${p(sec)}';
   }
 
   Widget _cardLink(BuildContext context, Widget child) => GestureDetector(
@@ -92,11 +154,46 @@ class _HomePageState extends ConsumerState<HomePage> {
             ],
           ),
           const SizedBox(height: 10),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(_deltaText(rides, now, s),
+                  style: const TextStyle(fontSize: 11.5, color: AppTheme.txt3)),
+              Text('累计骑行 ${u.dist(_totalKm(rides))}',
+                  style: const TextStyle(fontSize: 11.5, color: AppTheme.txt3)),
+            ],
+          ),
+          const SizedBox(height: 4),
           Text('骑行 ${s.count} 次',
               style: const TextStyle(fontSize: 12, color: AppTheme.txt3)),
         ],
       ),
     );
+  }
+
+  /// 较上一周期同期的距离变化（今日→昨日，本周→上周，本月→上月）
+  String _deltaText(List<k.RideLite> rides, DateTime now, k.PeriodStats cur) {
+    final kind = [PeriodKind.today, PeriodKind.week, PeriodKind.month][_period];
+    final prev = _prevPeriod(now, kind);
+    final prevStats = k.sumPeriod(rides, prev, kind);
+    if (prevStats.km <= 0) return '较上期无可比数据';
+    final d = (cur.km - prevStats.km) / prevStats.km * 100;
+    final sign = d >= 0 ? '+' : '';
+    return '较上期同期 $sign${d.round()}% 距离';
+  }
+
+  DateTime _prevPeriod(DateTime now, PeriodKind kind) => switch (kind) {
+        PeriodKind.today => now.subtract(const Duration(days: 1)),
+        PeriodKind.week => now.subtract(const Duration(days: 7)),
+        PeriodKind.month => DateTime(now.year, now.month - 1, now.day),
+      };
+
+  double _totalKm(List<k.RideLite> rides) {
+    var km = 0.0;
+    for (final r in rides) {
+      km += r.distanceKm;
+    }
+    return km;
   }
 
   Widget _ovItem(String label, String value) => Expanded(

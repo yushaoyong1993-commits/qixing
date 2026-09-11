@@ -33,16 +33,112 @@ class _StatsPageState extends ConsumerState<StatsPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          _liveBanner(context),
           _periodSeg(kinds, now),
           _tiles(s),
+          _deltaLine(rides, now, s),
           _section('近 7 天'),
           _bars(days, lastNDayStarts(now, 7)),
-          _section('近 6 月趋势'),
+          _section('周·月趋势'),
+          _trendSeg(),
           _monthBars(months),
-          _section('日历热力图'),
+          _section('日历热力图 · 点击有骑行日查看当天（未完成）'),
           _heatmap(context, rides, now),
+          _section('累计'),
+          _totals(rides),
           _section('个人纪录'),
           _records(recs),
+          const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+
+  /// 骑行进行中横幅（原型 statLive）——需要跨页会话状态，暂为占位
+  Widget _liveBanner(BuildContext context) => Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: AppTheme.card2,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.fiber_manual_record, size: 12, color: AppTheme.txt3),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text('骑行进行中横幅（未完成）',
+                  style: TextStyle(fontSize: 12.5, color: AppTheme.txt2)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).maybePop(),
+              child: const Text('回到记录', style: TextStyle(fontSize: 12)),
+            ),
+          ],
+        ),
+      );
+
+  /// 较上期同期变化 + 目标占位
+  Widget _deltaLine(List<k.RideLite> rides, DateTime now, k.PeriodStats cur) {
+    final kind = [PeriodKind.today, PeriodKind.week, PeriodKind.month][_period];
+    final prevDate = switch (kind) {
+      PeriodKind.today => now.subtract(const Duration(days: 1)),
+      PeriodKind.week => now.subtract(const Duration(days: 7)),
+      PeriodKind.month => DateTime(now.year, now.month - 1, now.day),
+    };
+    final prev = k.sumPeriod(rides, prevDate, kind);
+    final text = prev.km <= 0
+        ? '较上期无可比数据'
+        : '较上期同期 ${cur.km >= prev.km ? '+' : ''}${((cur.km - prev.km) / prev.km * 100).round()}%';
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(text, style: const TextStyle(fontSize: 11.5, color: AppTheme.txt3)),
+          const Text('目标待设（未完成）',
+              style: TextStyle(fontSize: 11.5, color: AppTheme.txt3)),
+        ],
+      ),
+    );
+  }
+
+  /// 趋势粒度切换（近 8 周 / 近 6 月）
+  Widget _trendSeg() => Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Row(
+          children: [
+            ChoiceChip(
+              label: const Text('近 8 周（未完成）', style: TextStyle(fontSize: 12)),
+              selected: false,
+              onSelected: (_) {},
+            ),
+            const SizedBox(width: 6),
+            ChoiceChip(
+              label: const Text('近 6 月', style: TextStyle(fontSize: 12)),
+              selected: true,
+              onSelected: (_) {},
+            ),
+          ],
+        ),
+      );
+
+  /// 累计（原型 ctKm/ctDur/ctElev/ctCnt）
+  Widget _totals(List<k.RideLite> rides) {
+    final u = ref.watch(unitPrefsProvider);
+    var km = 0.0, min = 0.0, elev = 0.0;
+    for (final r in rides) {
+      km += r.distanceKm;
+      min += r.durationMin;
+      elev += r.elevGainM;
+    }
+    return _card(
+      Row(
+        children: [
+          _tile(u.distValue(km), '总里程 ${u.distUnit}'),
+          _tile('${(min / 60).toStringAsFixed(1)} h', '总时长'),
+          _tile(u.elevValue(elev), '总爬升 ${u.elevUnit}'),
+          _tile('${rides.length}', '总次数'),
         ],
       ),
     );

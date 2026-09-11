@@ -13,6 +13,8 @@ class RideLite {
     required this.distanceKm,
     required this.durationMin,
     required this.elevGainM,
+    this.name = '骑行',
+    this.type = '公路',
   });
 
   final int id;
@@ -20,6 +22,10 @@ class RideLite {
   final double distanceKm;
   final double durationMin;
   final double elevGainM;
+
+  /// 活动名称与类型（列表筛选 / 详情展示用）
+  final String name;
+  final String type;
 }
 
 class PeriodStats {

@@ -65,6 +65,13 @@ class SessionMachine {
     return true;
   }
 
+  /// 摘要阶段选择"再骑一段"：回到记录中，已录数据保留。
+  bool resumeFromSummary() {
+    if (_phase != SessionPhase.summary) return false;
+    _phase = SessionPhase.recording;
+    return true;
+  }
+
   void discard() {
     _phase = SessionPhase.idle;
     _distanceKm = 0;
