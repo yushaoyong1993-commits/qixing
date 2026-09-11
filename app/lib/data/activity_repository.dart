@@ -125,6 +125,38 @@ class ActivityRepository {
     return _db.delete(_db.drafts).go();
   }
 
+  // —— 分段 / 计圈 ——
+  Future<void> saveLaps(int activityId, List<LapRecord> laps) async {
+    if (laps.isEmpty) return;
+    await _db.batch((b) {
+      b.insertAll(_db.laps, [
+        for (final l in laps)
+          LapsCompanion.insert(
+            activityId: activityId,
+            idx: l.idx,
+            startT: l.startAt.millisecondsSinceEpoch,
+            endT: l.endAt.millisecondsSinceEpoch,
+            distM: Value(l.distM),
+          ),
+      ]);
+    });
+  }
+
+  Future<List<LapRecord>> lapsFor(int activityId) async {
+    final q = _db.select(_db.laps)
+      ..where((t) => t.activityId.equals(activityId))
+      ..orderBy([(t) => OrderingTerm.asc(t.idx)]);
+    final rows = await q.get();
+    return rows
+        .map((r) => LapRecord(
+              idx: r.idx,
+              startAt: DateTime.fromMillisecondsSinceEpoch(r.startT),
+              endAt: DateTime.fromMillisecondsSinceEpoch(r.endT),
+              distM: r.distM,
+            ))
+        .toList();
+  }
+
   // —— 轨迹点 ——
   Future<void> saveTrackPoints(int activityId, List<SimpleTrack> points) async {
     if (points.isEmpty) return;
@@ -198,4 +230,23 @@ class SimpleTrack {
   final double lon;
   final double? altM;
   final double? speedMps;
+}
+
+
+/// 分段/计圈记录（落库视图）。
+class LapRecord {
+  const LapRecord({
+    required this.idx,
+    required this.startAt,
+    required this.endAt,
+    required this.distM,
+  });
+  final int idx;
+  final DateTime startAt;
+  final DateTime endAt;
+  final double distM;
+
+  int get seconds => endAt.difference(startAt).inSeconds;
+  double get km => distM / 1000;
+  double get avgKmh => seconds > 0 ? km / (seconds / 3600) : 0;
 }

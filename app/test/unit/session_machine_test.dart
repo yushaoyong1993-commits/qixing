@@ -39,6 +39,8 @@ void main() {
   test('计圈与结束摘要流转', () {
     final m = SessionMachine();
     m.start();
+    m.tickSec(60); // 满足"最短圈"要求（否则会被误触过滤）
+    m.addSample(distKm: 1.0);
     expect(m.lap(), isTrue);
     expect(m.currentLap, 2);
     expect(m.finish(), isTrue);
@@ -66,4 +68,61 @@ void main() {
     expect(m.movingSec, 20); // 暂停后秒表与采样都不累计
   });
 
+
+  test('自动计圈：每满 5km 自动封一圈', () {
+    final m = SessionMachine();
+    m.start(autoLapKm: 5);
+    for (var i = 0; i < 10; i++) {
+      m.addSample(distKm: 0.6); // 累计 6.0km，跨过 5km
+    }
+    expect(m.laps.length, 1);
+    // 自动计圈在"跨过阈值那一刻"封口：0.6×9 = 5.4km
+    expect(m.laps.first.distanceKm, closeTo(5.4, 1e-9));
+    expect(m.lapCount, 1);
+    expect(m.currentLap, 2);
+  });
+
+  test('手动计圈：误触过滤（<100m 且 <10s 不封圈）', () {
+    final m = SessionMachine();
+    m.start();
+    m.tickSec(5);
+    m.addSample(distKm: 0.05); // 太短
+    expect(m.lap(), isFalse);
+    expect(m.laps, isEmpty);
+
+    m.tickSec(30);
+    m.addSample(distKm: 0.5);
+    expect(m.lap(), isTrue);
+    expect(m.laps.length, 1);
+    expect(m.laps.first.distanceKm, closeTo(0.55, 1e-9));
+  });
+
+  test('暂停不封圈：总时长走、移动时长与圈不变；结束时封最后一圈', () {
+    final m = SessionMachine();
+    m.start();
+    m.tickSec(60);
+    m.addSample(distKm: 1.0);
+    m.pause();
+    m.tickSec(120); // 暂停 2 分钟
+    expect(m.elapsedSec, 180);
+    expect(m.movingSec, 60); // 暂停不计移动
+    expect(m.laps, isEmpty); // 暂停不封圈
+    m.resume();
+    m.tickSec(30);
+    m.addSample(distKm: 0.5);
+    m.finish();
+    expect(m.laps.length, 1);
+    expect(m.laps.first.distanceKm, closeTo(1.5, 1e-9));
+    expect(m.laps.first.movingSec, 90);
+    expect(m.laps.first.endSec, 210);
+  });
+
+  test('圈均速按移动时长计算', () {
+    final m = SessionMachine();
+    m.start();
+    m.tickSec(1800); // 30 分钟
+    m.addSample(distKm: 10);
+    m.finish();
+    expect(m.laps.first.avgKmh, closeTo(20, 1e-6));
+  });
 }

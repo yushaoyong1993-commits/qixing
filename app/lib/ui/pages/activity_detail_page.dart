@@ -23,6 +23,7 @@ class ActivityDetailPage extends ConsumerStatefulWidget {
 class _ActivityDetailPageState extends ConsumerState<ActivityDetailPage> {
   final GlobalKey<AmapMapViewState> _mapKey = GlobalKey<AmapMapViewState>();
   List<SimpleTrack> _tracks = const [];
+  List<LapRecord> _laps = const [];
   bool _loading = true;
 
   @override
@@ -32,10 +33,13 @@ class _ActivityDetailPageState extends ConsumerState<ActivityDetailPage> {
   }
 
   Future<void> _load() async {
-    final pts = await ref.read(activityRepositoryProvider).trackPointsFor(widget.rideId);
+    final repo = ref.read(activityRepositoryProvider);
+    final pts = await repo.trackPointsFor(widget.rideId);
+    final laps = await repo.lapsFor(widget.rideId);
     if (!mounted) return;
     setState(() {
       _tracks = pts;
+      _laps = laps;
       _loading = false;
     });
   }
@@ -100,7 +104,7 @@ class _ActivityDetailPageState extends ConsumerState<ActivityDetailPage> {
           const SizedBox(height: 16),
           _placeholderSection('海拔 / 速度曲线（未完成）', '时间轴 / 距离轴切换；拖动取点'),
           const SizedBox(height: 12),
-          _placeholderSection('分段 / 计圈（未完成）', '每 5km 自动计圈，分段列表与对比'),
+          _lapsSection(),
           const SizedBox(height: 12),
           const Text('轨迹', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
           const SizedBox(height: 8),
@@ -162,6 +166,53 @@ class _ActivityDetailPageState extends ConsumerState<ActivityDetailPage> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已删除 · 列表已刷新')));
       Navigator.pop(context);
     }
+  }
+
+  /// 分段 / 计圈列表（原型 laps 区块）
+  Widget _lapsSection() {
+    if (_laps.isEmpty) {
+      return _placeholderSection('分段 / 计圈', '本次记录没有分段（未开启自动计圈且未手动计圈）');
+    }
+    final u = ref.watch(unitPrefsProvider);
+    var bestIdx = _laps.first.idx;
+    for (final l in _laps) {
+      if (l.avgKmh > (_laps.firstWhere((x) => x.idx == bestIdx).avgKmh)) bestIdx = l.idx;
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('分段 / 计圈 · ${_laps.length} 圈',
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            color: AppTheme.card,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppTheme.line),
+          ),
+          child: Column(
+            children: [
+              for (var i = 0; i < _laps.length; i++) ...[
+                if (i > 0) const Divider(height: 1),
+                ListTile(
+                  dense: true,
+                  leading: Text('L${_laps[i].idx}',
+                      style: const TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.accentInk)),
+                  title: Text(
+                      '${u.dist(_laps[i].km, digits: 2)} · ${_fmtSec(_laps[i].seconds.toDouble())}',
+                      style: const TextStyle(fontSize: 13)),
+                  subtitle: Text('均速 ${u.speed(_laps[i].avgKmh)}'
+                      '${_laps[i].idx == bestIdx && _laps.length > 1 ? ' · 最快圈' : ''}',
+                      style: const TextStyle(fontSize: 11, color: AppTheme.txt3)),
+                  trailing: const Icon(Icons.chevron_right, size: 18, color: AppTheme.txt3),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
   }
 
   /// 未完成区块占位（原型有、功能待做）

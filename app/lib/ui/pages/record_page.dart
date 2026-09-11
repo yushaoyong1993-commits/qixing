@@ -29,7 +29,6 @@ class _RecordPageState extends ConsumerState<RecordPage> {
   String _type = '公路';
   bool _autoPause = true;
   bool _autoLap = false;
-  double _lapBase = 0;
 
   DateTime _startedAt = DateTime.now();
 
@@ -100,7 +99,7 @@ class _RecordPageState extends ConsumerState<RecordPage> {
     _ticker?.cancel();
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
-      if (_m.phase == SessionPhase.recording) {
+      if (_m.phase == SessionPhase.recording || _m.phase == SessionPhase.paused) {
         _m.tickSec();
         setState(() {});
       }
@@ -217,10 +216,6 @@ class _RecordPageState extends ConsumerState<RecordPage> {
           speedMps: (pos.speed.isFinite && pos.speed >= 0) ? pos.speed : null,
         ));
       }
-      if (_autoLap && _m.distanceKm - _lapBase >= 5) {
-        _lapBase = _m.distanceKm;
-        _m.lap();
-      }
       // 每跨过 1 公里播报一次
       if (_voiceOn) {
         final done = _m.distanceKm.floor();
@@ -245,17 +240,21 @@ class _RecordPageState extends ConsumerState<RecordPage> {
 
   void _start({bool resume = false}) {
     if (!resume) {
-      if (!_m.start(autoPause: _autoPause)) return;
+      if (!_m.start(autoPause: _autoPause, autoLapKm: _autoLap ? 5 : 0)) return;
       _startedAt = DateTime.now();
     } else {
       final d = _draft;
       if (d == null) return;
       _type = d.type;
-      _m.restore(distanceKm: d.distanceKm, movingSec: d.totalS, laps: d.laps);
+      _m.restore(
+          distanceKm: d.distanceKm,
+          movingSec: d.totalS,
+          laps: d.laps,
+          autoPause: _autoPause,
+          autoLapKm: _autoLap ? 5 : 0);
       _startedAt = d.startedAt;
       _draft = null;
     }
-    _lapBase = _m.distanceKm;
     _lastKmAnnounced = _m.distanceKm.floor();
     _last = null;
     _spdKmph = 0;
@@ -374,6 +373,16 @@ class _RecordPageState extends ConsumerState<RecordPage> {
       kcal: (_m.distanceKm * 24).round(),
     );
     if (_tracks.isNotEmpty) await repo.saveTrackPoints(id, _tracks);
+    // 分段/计圈落库（时间 = 会话开始 + 圈内 elapsed 秒）
+    final laps = _m.laps
+        .map((l) => LapRecord(
+              idx: l.index,
+              startAt: _startedAt.add(Duration(seconds: l.startSec)),
+              endAt: _startedAt.add(Duration(seconds: l.endSec)),
+              distM: l.distanceKm * 1000,
+            ))
+        .toList();
+    if (laps.isNotEmpty) await repo.saveLaps(id, laps);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('已保存 · 首页/统计已自动刷新', textAlign: TextAlign.center)),
@@ -495,8 +504,18 @@ class _RecordPageState extends ConsumerState<RecordPage> {
     return SingleChildScrollView(
       child: Column(
       children: [
-        Text('● REC ${_fmtSec(_m.movingSec)}',
-            style: const TextStyle(fontSize: 12, color: AppTheme.accent, letterSpacing: 1)),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text('● REC ${_fmtSec(_m.movingSec)}',
+                style: const TextStyle(
+                    fontSize: 12, color: AppTheme.accent, letterSpacing: 1)),
+            const SizedBox(width: 10),
+            Text('L${_m.currentLap}',
+                style: const TextStyle(
+                    fontSize: 12, color: AppTheme.txt2, fontWeight: FontWeight.w600)),
+          ],
+        ),
         const SizedBox(height: 2),
         Text(_fmtSec(_m.movingSec), style: _h1.copyWith(fontSize: 54)),
         const SizedBox(height: 6),
@@ -522,9 +541,14 @@ class _RecordPageState extends ConsumerState<RecordPage> {
         ),
         const SizedBox(height: 6),
         Text(
-            '爬升 ${_m.elevGainM.round()} m · 圈数 ${_m.lapCount} · '
-            '千卡 ${(_m.distanceKm * 24).round()} · 心率（未完成）',
+            '爬升 ${_m.elevGainM.round()} m · 千卡 ${(_m.distanceKm * 24).round()} · 心率（未完成）',
             style: const TextStyle(fontSize: 12, color: AppTheme.txt2)),
+        const SizedBox(height: 2),
+        Text(
+            '本圈 ${_m.currentLapDistanceKm.toStringAsFixed(2)} km · '
+            '${_fmtSec(_m.currentLapMovingSec)} · 均速 ${_m.currentLapAvgKmh.toStringAsFixed(1)} km/h'
+            ' · 已完成 ${_m.lapCount} 圈',
+            style: const TextStyle(fontSize: 11.5, color: AppTheme.txt3)),
         const SizedBox(height: 12),
         // 实时地图：当前位置 + 已骑轨迹
         SizedBox(
@@ -554,7 +578,13 @@ class _RecordPageState extends ConsumerState<RecordPage> {
           children: [
             IconButton.filledTonal(
               onPressed: () {
-                if (_m.lap()) setState(() {});
+                final ok = _m.lap();
+                setState(() {});
+                if (!ok) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('本圈太短（<100m 且 <10s），已忽略', textAlign: TextAlign.center),
+                  ));
+                }
               },
               icon: const Icon(Icons.flag_outlined),
               tooltip: '计圈',
