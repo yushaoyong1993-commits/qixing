@@ -19,6 +19,122 @@ class _ActivityListPageState extends ConsumerState<ActivityListPage> {
   static const _filters = ['全部', '公路', '山地', '通勤', '训练'];
   String _filter = '全部';
 
+  /// 手动补记（AL-08）：录入一次没有 GPS 记录的骑行
+  Future<void> _manualAdd(BuildContext context, WidgetRef ref) async {
+    final nameCtl = TextEditingController(text: '补记骑行');
+    final kmCtl = TextEditingController();
+    final minCtl = TextEditingController();
+    final elevCtl = TextEditingController();
+    var type = '公路';
+    var when = DateTime.now();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => StatefulBuilder(
+        builder: (c, setD) => AlertDialog(
+          title: const Text('手动补记'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                    controller: nameCtl,
+                    decoration: const InputDecoration(labelText: '名称')),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  children: [
+                    for (final t in const ['公路', '山地', '通勤', '训练'])
+                      ChoiceChip(
+                        label: Text(t, style: const TextStyle(fontSize: 12)),
+                        selected: type == t,
+                        onSelected: (_) => setD(() => type = t),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                    controller: kmCtl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: '距离（km）')),
+                const SizedBox(height: 8),
+                TextField(
+                    controller: minCtl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: '时长（分钟）')),
+                const SizedBox(height: 8),
+                TextField(
+                    controller: elevCtl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: '累计爬升（m，可选）')),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '时间：${when.year}-${when.month}-${when.day} '
+                        '${when.hour}:${when.minute.toString().padLeft(2, '0')}',
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () async {
+                        final d = await showDatePicker(
+                          context: c,
+                          initialDate: when,
+                          firstDate: DateTime(2000),
+                          lastDate: DateTime(2100),
+                        );
+                        if (!c.mounted) return;
+                        final t = await showTimePicker(
+                          context: c,
+                          initialTime: TimeOfDay.fromDateTime(when),
+                        );
+                        if (c.mounted && d != null && t != null) {
+                          setD(() => when = DateTime(
+                              d.year, d.month, d.day, t.hour, t.minute));
+                        }
+                      },
+                      child: const Text('选择时间'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('取消')),
+            FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('保存')),
+          ],
+        ),
+      ),
+    );
+    if (ok != true) return;
+    final km = double.tryParse(kmCtl.text.trim()) ?? 0;
+    final min = double.tryParse(minCtl.text.trim()) ?? 0;
+    final elev = double.tryParse(elevCtl.text.trim()) ?? 0;
+    await ref.read(activityRepositoryProvider).saveRide(
+          name: nameCtl.text.trim().isEmpty ? '补记骑行' : nameCtl.text.trim(),
+          type: type,
+          startAt: when,
+          durationS: (min * 60).round(),
+          movingS: (min * 60).round(),
+          distanceM: km * 1000,
+          elevGainM: elev,
+          elevLossM: 0,
+          hrAvg: null,
+          hrMax: null,
+          kcal: (km * 24).round(),
+          source: '手动',
+        );
+    nameCtl.dispose();
+    kmCtl.dispose();
+    minCtl.dispose();
+    elevCtl.dispose();
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('已补记一条骑行', textAlign: TextAlign.center)));
+  }
+
   @override
   Widget build(BuildContext context) {
     final all = ref.watch(ridesProvider).valueOrNull ?? const <k.RideLite>[];
@@ -31,8 +147,8 @@ class _ActivityListPageState extends ConsumerState<ActivityListPage> {
         title: const Text('活动'),
         actions: [
           TextButton(
-            onPressed: () => showNotReady(context, '手动补记'),
-            child: const Text('＋手动（未完成）', style: TextStyle(fontSize: 12)),
+            onPressed: () => _manualAdd(context, ref),
+            child: const Text('＋手动补记', style: TextStyle(fontSize: 12)),
           ),
         ],
       ),

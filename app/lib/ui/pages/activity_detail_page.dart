@@ -9,7 +9,7 @@ import '../../data/route_planner.dart';
 import '../../domain/stats/aggregate.dart' as k;
 import '../../theme/app_theme.dart';
 import '../widgets/amap_map_view.dart';
-import '../widgets/not_ready.dart';
+import '../widgets/ele_speed_chart.dart';
 
 /// 活动详情：指标 + **真实轨迹（高德地图显示）** + 删除。
 class ActivityDetailPage extends ConsumerStatefulWidget {
@@ -26,6 +26,7 @@ class _ActivityDetailPageState extends ConsumerState<ActivityDetailPage> {
   List<SimpleTrack> _tracks = const [];
   List<LapRecord> _laps = const [];
   bool _loading = true;
+  bool _chartByDistance = false;
 
   @override
   void initState() {
@@ -101,8 +102,8 @@ class _ActivityDetailPageState extends ConsumerState<ActivityDetailPage> {
             },
           ),
           TextButton(
-            onPressed: () => showNotReady(context, '编辑活动（名称/类型/备注）'),
-            child: const Text('编辑（未完成）', style: TextStyle(fontSize: 12)),
+            onPressed: () => _editActivity(r!),
+            child: const Text('编辑', style: TextStyle(fontSize: 12)),
           ),
           IconButton(
             icon: const Icon(Icons.delete_outline),
@@ -121,7 +122,7 @@ class _ActivityDetailPageState extends ConsumerState<ActivityDetailPage> {
           _item('均速', u.speed(speed)),
           _item('累计爬升', u.elev(r.elevGainM)),
           const SizedBox(height: 16),
-          _placeholderSection('海拔 / 速度曲线（未完成）', '时间轴 / 距离轴切换；拖动取点'),
+          _chartSection(),
           const SizedBox(height: 12),
           _lapsSection(),
           const SizedBox(height: 12),
@@ -167,6 +168,62 @@ class _ActivityDetailPageState extends ConsumerState<ActivityDetailPage> {
     );
   }
 
+  /// 编辑活动：名称 / 类型 / 备注（ACT-05）
+  Future<void> _editActivity(k.RideLite r) async {
+    final nameCtl = TextEditingController(text: r.name);
+    var type = r.type;
+    String note = '';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => StatefulBuilder(
+        builder: (c, setD) => AlertDialog(
+          title: const Text('编辑活动'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameCtl,
+                decoration: const InputDecoration(labelText: '名称'),
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 6,
+                children: [
+                  for (final t in const ['公路', '山地', '通勤', '训练', '导入'])
+                    ChoiceChip(
+                      label: Text(t, style: const TextStyle(fontSize: 12)),
+                      selected: type == t,
+                      onSelected: (_) => setD(() => type = t),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                decoration: const InputDecoration(labelText: '备注（可选）'),
+                onChanged: (v) => note = v,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('取消')),
+            FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('保存')),
+          ],
+        ),
+      ),
+    );
+    if (ok != true) return;
+    await ref.read(activityRepositoryProvider).updateMeta(
+          widget.rideId,
+          name: nameCtl.text.trim().isEmpty ? r.name : nameCtl.text.trim(),
+          type: type,
+          note: note,
+        );
+    nameCtl.dispose();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('已保存修改', textAlign: TextAlign.center)));
+  }
+
   Future<void> _confirmDelete(BuildContext context, int id) async {
     final ok = await showDialog<bool>(
       context: context,
@@ -185,6 +242,42 @@ class _ActivityDetailPageState extends ConsumerState<ActivityDetailPage> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已删除 · 列表已刷新')));
       Navigator.pop(context);
     }
+  }
+
+  /// 海拔 / 速度曲线（原型 AD-04）
+  Widget _chartSection() {
+    if (_tracks.length < 2) {
+      return _placeholderSection('海拔 / 速度曲线', '本次记录没有轨迹点，无法绘制曲线');
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text('海拔 / 速度',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+            Row(
+              children: [
+                ChoiceChip(
+                  label: const Text('时间轴', style: TextStyle(fontSize: 11.5)),
+                  selected: !_chartByDistance,
+                  onSelected: (_) => setState(() => _chartByDistance = false),
+                ),
+                const SizedBox(width: 4),
+                ChoiceChip(
+                  label: const Text('距离轴', style: TextStyle(fontSize: 11.5)),
+                  selected: _chartByDistance,
+                  onSelected: (_) => setState(() => _chartByDistance = true),
+                ),
+              ],
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        EleSpeedChart(points: _tracks, byDistance: _chartByDistance),
+      ],
+    );
   }
 
   /// 分段 / 计圈列表（原型 laps 区块）
