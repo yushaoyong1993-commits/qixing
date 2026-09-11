@@ -66,5 +66,13 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>用于记录骑行轨迹、速度与距离</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>用于锁屏或切换到后台时继续记录骑行</string>
 </dict>
 </plist>

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,6 +10,7 @@ import '../../data/activity_repository.dart';
 import '../../data/providers.dart';
 import '../../data/route_planner.dart';
 import '../../domain/record/session_machine.dart';
+import '../../domain/record/voice_announcer.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/amap_map_view.dart';
 
@@ -30,6 +32,11 @@ class _RecordPageState extends ConsumerState<RecordPage> {
   double _lapBase = 0;
 
   DateTime _startedAt = DateTime.now();
+
+  // 语音播报（每公里）
+  final VoiceAnnouncer _voice = VoiceAnnouncer();
+  bool _voiceOn = false;
+  int _lastKmAnnounced = 0;
 
   // 秒表（与 GPS 解耦：无定位时长照常走）
   Timer? _ticker;
@@ -63,12 +70,15 @@ class _RecordPageState extends ConsumerState<RecordPage> {
       final t = await repo.get('default_ride_type');
       final ap = await repo.get('auto_pause');
       final al = await repo.get('auto_lap');
+      final vo = await repo.get('voice_announce');
       if (!mounted) return;
       setState(() {
         if (t != null && _types.contains(t)) _type = t;
         if (ap != null) _autoPause = ap == 'true';
         if (al != null) _autoLap = al == 'true';
+        _voiceOn = vo == 'true';
       });
+      if (_voiceOn) await _voice.init();
     } catch (_) {}
   }
 
@@ -80,6 +90,7 @@ class _RecordPageState extends ConsumerState<RecordPage> {
   @override
   void dispose() {
     _ticker?.cancel();
+    _voice.stop();
     _posSub?.cancel();
     _persistDraftIfActive();
     super.dispose();
@@ -121,12 +132,35 @@ class _RecordPageState extends ConsumerState<RecordPage> {
         }
         return;
       }
-      _posSub = Geolocator.getPositionStream(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.best,
-          distanceFilter: 2,
-        ),
-      ).listen(_onPos, onError: (_) {});
+      // Android：前台服务 + 常驻通知 + WakeLock → 锁屏/切后台继续记录
+      // iOS：允许后台定位更新 + 后台指示条；其它平台用默认设置
+      final LocationSettings locSettings = Platform.isAndroid
+          ? AndroidSettings(
+              accuracy: LocationAccuracy.best,
+              distanceFilter: 2,
+              forceLocationManager: false,
+              foregroundNotificationConfig: const ForegroundNotificationConfig(
+                notificationTitle: '跋涉 · 正在记录骑行',
+                notificationText: '点击返回 App（请勿手动划掉，否则可能中断记录）',
+                notificationChannelName: '骑行记录',
+                enableWakeLock: true,
+                setOngoing: true,
+              ),
+            )
+          : Platform.isIOS
+              ? AppleSettings(
+                  accuracy: LocationAccuracy.best,
+                  activityType: ActivityType.fitness,
+                  distanceFilter: 2,
+                  allowBackgroundLocationUpdates: true,
+                  pauseLocationUpdatesAutomatically: false,
+                  showBackgroundLocationIndicator: true,
+                )
+              : const LocationSettings(
+                  accuracy: LocationAccuracy.best, distanceFilter: 2);
+
+      _posSub = Geolocator.getPositionStream(locationSettings: locSettings)
+          .listen(_onPos, onError: (_) {});
       setState(() => _gpsReady = false);
     } catch (_) {
       // 无定位环境（如测试/模拟器无插件）时静默降级：距离为 0，仍可记录计时。
@@ -187,6 +221,17 @@ class _RecordPageState extends ConsumerState<RecordPage> {
         _lapBase = _m.distanceKm;
         _m.lap();
       }
+      // 每跨过 1 公里播报一次
+      if (_voiceOn) {
+        final done = _m.distanceKm.floor();
+        if (done > _lastKmAnnounced && done > 0) {
+          _lastKmAnnounced = done;
+          final avgNow =
+              _m.movingSec > 0 ? _m.distanceKm / (_m.movingSec / 3600) : 0.0;
+          _voice.say('已骑行 $done 公里，用时 ${_fmtSec(_m.movingSec)}，'
+              '平均速度 ${avgNow.round()} 公里每小时');
+        }
+      }
       if (_autoPause && spd < 0.5) _pause(); // 速度≈0 自动暂停
       _gpsReady = true;
       if (mounted) {
@@ -211,6 +256,7 @@ class _RecordPageState extends ConsumerState<RecordPage> {
       _draft = null;
     }
     _lapBase = _m.distanceKm;
+    _lastKmAnnounced = _m.distanceKm.floor();
     _last = null;
     _spdKmph = 0;
     _tracks.clear();
@@ -247,6 +293,10 @@ class _RecordPageState extends ConsumerState<RecordPage> {
     _posSub = null;
     _liveMapReady = false;
     _m.finish();
+    if (_voiceOn) {
+      _voice.say('骑行结束，共 ${_m.distanceKm.toStringAsFixed(1)} 公里，'
+          '用时 ${_fmtSec(_m.movingSec)}');
+    }
     setState(() {});
     final ok = await showDialog<bool>(
       context: context,

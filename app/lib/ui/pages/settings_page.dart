@@ -20,6 +20,7 @@ class SettingsPage extends ConsumerWidget {
     final defaultType = settings['default_ride_type'] ?? '公路';
     final autoPause = (settings['auto_pause'] ?? 'true') == 'true';
     final autoLap = (settings['auto_lap'] ?? 'false') == 'true';
+    final voiceOn = (settings['voice_announce'] ?? 'false') == 'true';
 
     return Scaffold(
       appBar: AppBar(title: const Text('设置')),
@@ -88,6 +89,40 @@ class SettingsPage extends ConsumerWidget {
                       style: TextStyle(fontSize: 14)),
                   value: autoLap,
                   onChanged: (v) => repo.set('auto_lap', '$v'),
+                ),
+                SwitchListTile(
+                  title: const Text('语音播报（每公里）', style: TextStyle(fontSize: 14)),
+                  subtitle: const Text('骑行中每满 1 公里播报距离/用时/均速，结束时总结',
+                      style: TextStyle(fontSize: 11, color: AppTheme.txt3)),
+                  value: voiceOn,
+                  onChanged: (v) => repo.set('voice_announce', '$v'),
+                ),
+              ],
+            ),
+          ),
+
+          _section('后台记录'),
+          Card(
+            elevation: 0,
+            shape: _cardShape,
+            child: const Column(
+              children: [
+                ListTile(
+                  title: Text('锁屏 / 切后台继续记录', style: TextStyle(fontSize: 14)),
+                  subtitle: Text(
+                    '记录开始时系统会显示"跋涉 · 正在记录骑行"常驻通知（Android 前台服务）。'
+                    '请勿在通知栏手动划掉它，否则记录可能中断。',
+                    style: TextStyle(fontSize: 11.5, color: AppTheme.txt3),
+                  ),
+                ),
+                Divider(height: 1),
+                ListTile(
+                  title: Text('省电优化提示', style: TextStyle(fontSize: 14)),
+                  subtitle: Text(
+                    '部分手机会限制后台定位：请在 系统设置 → 电池 → 应用启动管理 中，'
+                    '把"跋涉"设为"允许后台活动/不优化"。',
+                    style: TextStyle(fontSize: 11.5, color: AppTheme.txt3),
+                  ),
                 ),
               ],
             ),
