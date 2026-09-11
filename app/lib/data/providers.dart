@@ -48,3 +48,33 @@ final unitPrefsProvider = Provider<UnitPrefs>((ref) {
   final s = ref.watch(settingsProvider).valueOrNull ?? const <String, String>{};
   return UnitPrefs.fromSettings(s);
 });
+
+/// 记录会话的全局快照（由记录页在每次状态变化时写入）。
+/// 用于其它页面显示"骑行进行中"横幅。
+class SessionStatus {
+  const SessionStatus({
+    required this.type,
+    required this.movingSec,
+    required this.distanceKm,
+    required this.paused,
+    required this.lap,
+  });
+
+  final String type;
+  final int movingSec;
+  final double distanceKm;
+  final bool paused;
+  final int lap;
+
+  String get clock {
+    final h = movingSec ~/ 3600, m = (movingSec % 3600) ~/ 60, s = movingSec % 60;
+    String p(int v) => v.toString().padLeft(2, '0');
+    return h > 0 ? '${p(h)}:${p(m)}:${p(s)}' : '${p(m)}:${p(s)}';
+  }
+}
+
+/// null = 当前没有进行中的记录
+final sessionStatusProvider = StateProvider<SessionStatus?>((ref) => null);
+
+/// 底部 Tab 当前下标（供"回到记录"等跨页跳转使用）
+final tabIndexProvider = StateProvider<int>((ref) => 0);

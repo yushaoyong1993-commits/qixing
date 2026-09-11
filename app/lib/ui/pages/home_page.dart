@@ -28,6 +28,7 @@ class _HomePageState extends ConsumerState<HomePage> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         children: [
+          if (ref.watch(sessionStatusProvider) != null) _liveBanner(),
           _HeroStartButton(onPressed: () => _coming(context)),
           const SizedBox(height: 12),
           _cardLink(context,_overviewCard(rides)),
@@ -37,6 +38,43 @@ class _HomePageState extends ConsumerState<HomePage> {
           ],
           const SizedBox(height: 18),
           _recent(rides),
+        ],
+      ),
+    );
+  }
+
+  /// 骑行进行中横幅（与记录会话联动）
+  Widget _liveBanner() {
+    final st = ref.watch(sessionStatusProvider)!;
+    final u = ref.watch(unitPrefsProvider);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFDEBDD),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.accent.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        children: [
+          Icon(st.paused ? Icons.pause_circle_outline : Icons.fiber_manual_record,
+              size: 14, color: AppTheme.accent),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('${st.paused ? '已暂停' : '骑行进行中'} ${st.clock}',
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                Text('${u.dist(st.distanceKm)} · ${st.type} · L${st.lap}',
+                    style: const TextStyle(fontSize: 11, color: AppTheme.txt2)),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: () => ref.read(tabIndexProvider.notifier).state = 2,
+            child: const Text('回到记录', style: TextStyle(fontSize: 12)),
+          ),
         ],
       ),
     );

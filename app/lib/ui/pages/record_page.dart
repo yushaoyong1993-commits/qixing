@@ -95,6 +95,21 @@ class _RecordPageState extends ConsumerState<RecordPage> {
     super.dispose();
   }
 
+  /// 把当前会话快照写到全局 provider（其它页面用来显示"骑行进行中"）
+  void _syncStatus() {
+    if (!mounted) return;
+    final active = _m.isActive;
+    ref.read(sessionStatusProvider.notifier).state = active
+        ? SessionStatus(
+            type: _type,
+            movingSec: _m.movingSec,
+            distanceKm: _m.distanceKm,
+            paused: _m.phase == SessionPhase.paused,
+            lap: _m.lapCount,
+          )
+        : null;
+  }
+
   void _startTicker() {
     _ticker?.cancel();
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -102,6 +117,7 @@ class _RecordPageState extends ConsumerState<RecordPage> {
       if (_m.phase == SessionPhase.recording || _m.phase == SessionPhase.paused) {
         _m.tickSec();
         setState(() {});
+        _syncStatus();
       }
     });
   }
@@ -231,6 +247,7 @@ class _RecordPageState extends ConsumerState<RecordPage> {
       _gpsReady = true;
       if (mounted) {
         setState(() {});
+        _syncStatus();
         _renderLiveMap();
       }
     } else {
@@ -261,6 +278,7 @@ class _RecordPageState extends ConsumerState<RecordPage> {
     _tracks.clear();
     _startTicker();
     setState(() {});
+    _syncStatus();
     _initLoc();
   }
 
@@ -270,6 +288,7 @@ class _RecordPageState extends ConsumerState<RecordPage> {
     _posSub?.pause();
     _renderLiveMap(force: true);
     setState(() {});
+    _syncStatus();
   }
 
   void _resume() {
@@ -277,6 +296,7 @@ class _RecordPageState extends ConsumerState<RecordPage> {
     _m.resume();
     _posSub?.resume();
     setState(() {});
+    _syncStatus();
   }
 
   void _pauseOrResume() {
@@ -330,6 +350,7 @@ class _RecordPageState extends ConsumerState<RecordPage> {
     _spdKmph = 0;
     _last = null;
     setState(() {});
+    _syncStatus();
   }
 
   Future<void> _abort() async {
@@ -355,6 +376,7 @@ class _RecordPageState extends ConsumerState<RecordPage> {
     _spdKmph = 0;
     _last = null;
     if (mounted) setState(() {});
+    _syncStatus();
   }
 
   Future<void> _save() async {
@@ -580,6 +602,7 @@ class _RecordPageState extends ConsumerState<RecordPage> {
               onPressed: () {
                 final ok = _m.lap();
                 setState(() {});
+                _syncStatus();
                 if (!ok) {
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
                     content: Text('本圈太短（<100m 且 <10s），已忽略', textAlign: TextAlign.center),

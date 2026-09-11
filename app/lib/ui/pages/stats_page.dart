@@ -5,6 +5,7 @@ import '../../core/periods.dart';
 import '../../data/providers.dart';
 import '../../domain/stats/aggregate.dart' as k;
 import '../../theme/app_theme.dart';
+import 'activity_detail_page.dart';
 
 /// 统计页（M1）：周期指标格 + 近 7 天柱状 + 近 6 月趋势 + 日历热力图 + 个人纪录(含 10/50/100km)。
 class StatsPage extends ConsumerStatefulWidget {
@@ -17,6 +18,8 @@ class StatsPage extends ConsumerStatefulWidget {
 class _StatsPageState extends ConsumerState<StatsPage> {
   int _period = 1; // 默认本周
   int _heatOff = 0; // 热力图月份偏移（0=本月）
+
+  DateTime? _selectedDay; // 热力图点选的某天
 
   @override
   Widget build(BuildContext context) {
@@ -34,6 +37,7 @@ class _StatsPageState extends ConsumerState<StatsPage> {
         padding: const EdgeInsets.all(16),
         children: [
           _liveBanner(context),
+          if (_selectedDay != null) _dayCard(rides),
           _periodSeg(kinds, now),
           _tiles(s),
           _deltaLine(rides, now, s),
@@ -54,29 +58,93 @@ class _StatsPageState extends ConsumerState<StatsPage> {
     );
   }
 
-  /// 骑行进行中横幅（原型 statLive）——需要跨页会话状态，暂为占位
-  Widget _liveBanner(BuildContext context) => Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: AppTheme.card2,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.fiber_manual_record, size: 12, color: AppTheme.txt3),
-            const SizedBox(width: 8),
-            const Expanded(
-              child: Text('骑行进行中横幅（未完成）',
-                  style: TextStyle(fontSize: 12.5, color: AppTheme.txt2)),
+  /// 骑行进行中横幅（原型 statLive）：读取全局会话快照
+  Widget _liveBanner(BuildContext context) {
+    final st = ref.watch(sessionStatusProvider);
+    if (st == null) return const SizedBox.shrink();
+    final u = ref.watch(unitPrefsProvider);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFDEBDD),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.accent.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        children: [
+          Icon(st.paused ? Icons.pause_circle_outline : Icons.fiber_manual_record,
+              size: 14, color: AppTheme.accent),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('${st.paused ? '已暂停' : '骑行进行中'} ${st.clock}',
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                Text('${u.dist(st.distanceKm)} · ${st.type} · L${st.lap}',
+                    style: const TextStyle(fontSize: 11, color: AppTheme.txt2)),
+              ],
             ),
-            TextButton(
-              onPressed: () => Navigator.of(context).maybePop(),
-              child: const Text('回到记录', style: TextStyle(fontSize: 12)),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+                backgroundColor: AppTheme.accent, padding: const EdgeInsets.symmetric(horizontal: 12)),
+            onPressed: () => ref.read(tabIndexProvider.notifier).state = 2,
+            child: const Text('回到记录', style: TextStyle(fontSize: 12)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 热力图点选某天：列出当天活动（可点进详情）
+  Widget _dayCard(List<k.RideLite> rides) {
+    final d = _selectedDay!;
+    final u = ref.watch(unitPrefsProvider);
+    final dayRides = rides
+        .where((r) =>
+            r.startAt.year == d.year && r.startAt.month == d.month && r.startAt.day == d.day)
+        .toList();
+    return _card(Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text('${d.year}-${d.month}-${d.day} 当天',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+            ),
+            IconButton(
+              icon: const Icon(Icons.close, size: 16),
+              visualDensity: VisualDensity.compact,
+              onPressed: () => setState(() => _selectedDay = null),
             ),
           ],
         ),
-      );
+        if (dayRides.isEmpty)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 6),
+            child: Text('当天没有骑行记录', style: TextStyle(fontSize: 12, color: AppTheme.txt3)),
+          )
+        else
+          for (final r in dayRides)
+            ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.directions_bike, color: AppTheme.accent, size: 18),
+              title: Text(r.name, style: const TextStyle(fontSize: 13)),
+              subtitle: Text(
+                  '${u.dist(r.distanceKm)} · ${r.durationMin.round()} min · 爬升 ${u.elev(r.elevGainM)}',
+                  style: const TextStyle(fontSize: 11, color: AppTheme.txt3)),
+              trailing: const Icon(Icons.chevron_right, size: 16, color: AppTheme.txt3),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => ActivityDetailPage(rideId: r.id)),
+              ),
+            ),
+      ],
+    ));
+  }
 
   /// 较上期同期变化 + 目标占位
   Widget _deltaLine(List<k.RideLite> rides, DateTime now, k.PeriodStats cur) {
@@ -280,6 +348,7 @@ class _StatsPageState extends ConsumerState<StatsPage> {
     final max = values.isEmpty ? 1.0 : values.reduce((a, b) => b > a ? b : a);
 
     Widget cell(String? day, double? km) {
+      final dayNo = day == null ? null : int.tryParse(day);
       final Color bg;
       if (km == null) {
         bg = AppTheme.bg2;
@@ -287,14 +356,29 @@ class _StatsPageState extends ConsumerState<StatsPage> {
         final t = (km / max).clamp(0.0, 1.0);
         bg = Color.lerp(const Color(0xFFFFE9DD), AppTheme.accent, t)!;
       }
-      return Container(
+      final isSel = dayNo != null &&
+          _selectedDay != null &&
+          _selectedDay!.year == base.year &&
+          _selectedDay!.month == base.month &&
+          _selectedDay!.day == dayNo;
+      final box = Container(
         height: 26,
         margin: const EdgeInsets.all(1.5),
-        decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(6)),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(6),
+          border: isSel ? Border.all(color: AppTheme.accentInk, width: 1.6) : null,
+        ),
         alignment: Alignment.center,
         child: day == null
             ? null
             : Text(day, style: TextStyle(fontSize: 10, color: (km != null && km / max > 0.55) ? Colors.white : AppTheme.txt2, fontWeight: km != null && km / max > 0.7 ? FontWeight.w700 : FontWeight.w400)),
+      );
+      if (dayNo == null) return box;
+      return GestureDetector(
+        onTap: () => setState(
+            () => _selectedDay = DateTime(base.year, base.month, dayNo)),
+        child: box,
       );
     }
 

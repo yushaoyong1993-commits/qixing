@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../data/providers.dart';
 
 import '../pages/home_page.dart';
 import '../pages/map_page.dart';
@@ -11,15 +14,14 @@ import '../../theme/app_theme.dart';
 ///
 /// 采用 **懒加载 + 保活** 的 IndexedStack：访问过的页面保留 State，
 /// 这样从其它页面切回「地图」时 WebView 不会被重建（瓦片不会变白）。
-class RootShell extends StatefulWidget {
+class RootShell extends ConsumerStatefulWidget {
   const RootShell({super.key});
 
   @override
-  State<RootShell> createState() => _RootShellState();
+  ConsumerState<RootShell> createState() => _RootShellState();
 }
 
-class _RootShellState extends State<RootShell> {
-  int _index = 0;
+class _RootShellState extends ConsumerState<RootShell> {
   late final List<bool> _visited = [true, false, false, false];
 
   static const List<String> _tabs = ['首页', '地图', '记录', '我的'];
@@ -32,17 +34,18 @@ class _RootShellState extends State<RootShell> {
   ];
 
   void _go(int i) {
-    setState(() {
-      _index = i;
-      _visited[i] = true;
-    });
+    setState(() => _visited[i] = true);
+    ref.read(tabIndexProvider.notifier).state = i;
   }
 
   @override
   Widget build(BuildContext context) {
+    final index = ref.watch(tabIndexProvider);
+    // 跨页跳转（如统计页"回到记录"）时，确保目标页已被构建过
+    if (!_visited[index]) _visited[index] = true;
     return Scaffold(
       body: IndexedStack(
-        index: _index,
+        index: index,
         children: [
           for (var i = 0; i < _pages.length; i++)
             _visited[i] ? _pages[i] : const SizedBox.shrink(),
@@ -60,7 +63,7 @@ class _RootShellState extends State<RootShell> {
               for (var i = 0; i < _tabs.length; i++)
                 Expanded(
                     child: _TextTab(
-                        label: _tabs[i], selected: _index == i, onTap: () => _go(i))),
+                        label: _tabs[i], selected: index == i, onTap: () => _go(i))),
             ],
           ),
         ),

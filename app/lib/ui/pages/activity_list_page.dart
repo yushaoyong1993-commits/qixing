@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/units.dart';
 import '../../data/providers.dart';
 import '../../domain/stats/aggregate.dart' as k;
 import '../../theme/app_theme.dart';
-import '../widgets/not_ready.dart';
 import 'activity_detail_page.dart';
 
-/// 活动列表（M1）：读取 ridesProvider（Drift watch），点击进入详情。
+/// 活动列表：类型筛选 + 按日期分组 + 手动补记。
 class ActivityListPage extends ConsumerStatefulWidget {
   const ActivityListPage({super.key});
 
@@ -16,11 +16,113 @@ class ActivityListPage extends ConsumerStatefulWidget {
 }
 
 class _ActivityListPageState extends ConsumerState<ActivityListPage> {
-  static const _filters = ['全部', '公路', '山地', '通勤', '训练'];
+  static const _filters = ['全部', '公路', '山地', '通勤', '训练', '导入'];
   String _filter = '全部';
 
+  @override
+  Widget build(BuildContext context) {
+    final all = ref.watch(ridesProvider).valueOrNull ?? const <k.RideLite>[];
+    final rides =
+        _filter == '全部' ? all : all.where((r) => r.type == _filter).toList();
+    final u = ref.watch(unitPrefsProvider);
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('活动'),
+        actions: [
+          TextButton(
+            onPressed: () => _manualAdd(context),
+            child: const Text('＋手动补记', style: TextStyle(fontSize: 12)),
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          // 类型筛选（原型 actFilters）
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(
+              children: [
+                for (final f in _filters)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: ChoiceChip(
+                      label: Text(f, style: const TextStyle(fontSize: 12)),
+                      selected: _filter == f,
+                      onSelected: (_) => setState(() => _filter = f),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: rides.isEmpty
+                ? const Center(
+                    child: Text('没有符合条件骑行记录',
+                        style: TextStyle(color: AppTheme.txt3)))
+                : ListView(
+                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+                    children: _groupedTiles(rides, u),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 按日期分组（原型 actGroups）：今天 / 昨天 / M月D日 周X
+  List<Widget> _groupedTiles(List<k.RideLite> rides, UnitPrefs u) {
+    final out = <Widget>[];
+    String? lastKey;
+    for (final r in rides) {
+      final key = '${r.startAt.year}-${r.startAt.month}-${r.startAt.day}';
+      if (key != lastKey) {
+        lastKey = key;
+        out.add(Padding(
+          padding: const EdgeInsets.only(top: 12, bottom: 6, left: 2),
+          child: Text(_dayLabel(r.startAt),
+              style: const TextStyle(
+                  fontSize: 12.5, fontWeight: FontWeight.w600, color: AppTheme.txt2)),
+        ));
+      }
+      final speed = r.durationMin > 0 ? (r.distanceKm / (r.durationMin / 60)) : 0.0;
+      out.add(Card(
+        elevation: 0,
+        margin: const EdgeInsets.only(bottom: 6),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: const BorderSide(color: AppTheme.line),
+        ),
+        child: ListTile(
+          leading: const Icon(Icons.directions_bike, color: AppTheme.accent),
+          title: Text(r.name, style: const TextStyle(fontSize: 14)),
+          subtitle: Text(
+              '${u.dist(r.distanceKm)} · 爬升 ${u.elev(r.elevGainM)} · ${r.type}',
+              style: const TextStyle(fontSize: 11.5, color: AppTheme.txt3)),
+          trailing:
+              Text(u.speed(speed), style: const TextStyle(fontSize: 12, color: AppTheme.txt2)),
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => ActivityDetailPage(rideId: r.id)),
+          ),
+        ),
+      ));
+    }
+    return out;
+  }
+
+  String _dayLabel(DateTime d) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime(d.year, d.month, d.day);
+    final diff = today.difference(day).inDays;
+    if (diff == 0) return '今天';
+    if (diff == 1) return '昨天';
+    const wd = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+    return '${d.month}月${d.day}日 ${wd[d.weekday - 1]}';
+  }
+
   /// 手动补记（AL-08）：录入一次没有 GPS 记录的骑行
-  Future<void> _manualAdd(BuildContext context, WidgetRef ref) async {
+  Future<void> _manualAdd(BuildContext context) async {
     final nameCtl = TextEditingController(text: '补记骑行');
     final kmCtl = TextEditingController();
     final minCtl = TextEditingController();
@@ -89,9 +191,9 @@ class _ActivityListPageState extends ConsumerState<ActivityListPage> {
                           context: c,
                           initialTime: TimeOfDay.fromDateTime(when),
                         );
-                        if (c.mounted && d != null && t != null) {
-                          setD(() => when = DateTime(
-                              d.year, d.month, d.day, t.hour, t.minute));
+                        if (d != null && t != null) {
+                          setD(() => when =
+                              DateTime(d.year, d.month, d.day, t.hour, t.minute));
                         }
                       },
                       child: const Text('选择时间'),
@@ -131,80 +233,7 @@ class _ActivityListPageState extends ConsumerState<ActivityListPage> {
     minCtl.dispose();
     elevCtl.dispose();
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('已补记一条骑行', textAlign: TextAlign.center)));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final all = ref.watch(ridesProvider).valueOrNull ?? const <k.RideLite>[];
-    final rides = _filter == '全部'
-        ? all
-        : all.where((r) => r.type == _filter).toList();
-    final u = ref.watch(unitPrefsProvider);
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('活动'),
-        actions: [
-          TextButton(
-            onPressed: () => _manualAdd(context, ref),
-            child: const Text('＋手动补记', style: TextStyle(fontSize: 12)),
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          // 类型筛选（原型 actFilters）
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Row(
-              children: [
-                for (final f in _filters)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 6),
-                    child: ChoiceChip(
-                      label: Text(f, style: const TextStyle(fontSize: 12)),
-                      selected: _filter == f,
-                      onSelected: (_) => setState(() => _filter = f),
-                    ),
-                  ),
-                Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: ChoiceChip(
-                    label: const Text('导入（未完成）', style: TextStyle(fontSize: 12)),
-                    selected: false,
-                    onSelected: (_) => showNotReady(context, '导入的活动筛选'),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: rides.isEmpty
-          ? const Center(child: Text('还没有骑行记录', style: TextStyle(color: AppTheme.txt3)))
-          : ListView.separated(
-              padding: const EdgeInsets.all(12),
-              itemCount: rides.length,
-              separatorBuilder: (_, _) => const Divider(height: 1),
-              itemBuilder: (_, i) {
-                final r = rides[i];
-                final speed = r.durationMin > 0 ? (r.distanceKm / (r.durationMin / 60)) : 0.0;
-                return ListTile(
-                  leading: const Icon(Icons.directions_bike, color: AppTheme.accent),
-                  title: Text('${r.startAt.year}-${r.startAt.month}-${r.startAt.day} ${r.startAt.hour}:${r.startAt.minute.toString().padLeft(2, '0')}'),
-                  subtitle: Text('${u.dist(r.distanceKm)} · 爬升 ${u.elev(r.elevGainM)}'),
-                  trailing: Text(u.speed(speed),
-                      style: const TextStyle(fontSize: 13, color: AppTheme.txt2)),
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => ActivityDetailPage(rideId: r.id)),
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('已补记一条骑行', textAlign: TextAlign.center)));
   }
 }
