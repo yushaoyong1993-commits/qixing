@@ -131,3 +131,27 @@ String _fmtMin(double min) {
   if (h == 0) return '${min.round()} min';
   return '$h h ${(min % 60).round()} m';
 }
+
+/// 最快 10/50/100 km：按轨迹整体均速外推（正式实现按轨迹滚动窗口切片）。
+/// 需要活动里程 >= 窗口才参与；返回"最快 X km"纪录。
+List<RecordItem> windowRecords(Iterable<RideLite> rides, {List<int> windows = const [10, 50, 100]}) {
+  final out = <RecordItem>[];
+  for (final w in windows) {
+    double? best;
+    for (final r in rides) {
+      if (r.distanceKm >= w && r.durationMin > 0) {
+        final spd = r.distanceKm / (r.durationMin / 60);
+        if (best == null || spd > best) best = spd;
+      }
+    }
+    out.add(RecordItem('最快 $w km', best == null ? '—（距离不足）' : _fmtClock(w / best)));
+  }
+  return out;
+}
+
+String _fmtClock(double hours) {
+  final total = (hours * 3600).round();
+  final h = total ~/ 3600, m = (total % 3600) ~/ 60, s = total % 60;
+  String p(int v) => v.toString().padLeft(2, '0');
+  return h > 0 ? '${p(h)}:${p(m)}:${p(s)}' : '${p(m)}:${p(s)}';
+}
