@@ -18,7 +18,7 @@ env:
   PUB_HOSTED_URL: https://pub.flutter-io.cn
 
 jobs:
-  # ① 锁定版本（与本地/主流水线一致）：必须通过
+  # ① 锁定版本（与主流水线一致 3.47.4）：必须通过
   locked:
     runs-on: ubuntu-latest
     steps:
@@ -29,7 +29,7 @@ jobs:
           java-version: '17'
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.47.2'
+          flutter-version: '3.47.4'
           channel: stable
           cache: true
       - name: 环境信息
