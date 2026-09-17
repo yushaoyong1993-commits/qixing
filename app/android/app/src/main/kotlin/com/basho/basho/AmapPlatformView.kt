@@ -92,7 +92,8 @@ class AmapPlatformView(
                     "renderNav" -> { renderNavPath(call); result.success(null) }
                     "moveTo" -> { moveTo(call); result.success(null) }
                     "fitRoute" -> { fitRoute(); result.success(null) }
-                    "refresh" -> { mapView.onResume(); result.success(null) }
+                    "refresh", "resume" -> { mapView.onResume(); result.success(null) }
+                    "pause" -> { mapView.onPause(); result.success(null) }
                     else -> result.notImplemented()
                 }
             } catch (e: Exception) {

@@ -41,6 +41,7 @@ class AmapNativeView extends StatefulWidget {
 
 class AmapNativeViewState extends State<AmapNativeView> {
   MethodChannel? _method;
+  AppLifecycleListener? _lifecycle;
   StreamSubscription<dynamic>? _events;
   bool _ready = false;
 
@@ -56,7 +57,19 @@ class AmapNativeViewState extends State<AmapNativeView> {
       defaultTargetPlatform == TargetPlatform.android;
 
   @override
+  void initState() {
+    super.initState();
+    // 跟随 App 生命周期暂停/恢复原生地图，避免后台持续渲染耗电
+    _lifecycle = AppLifecycleListener(
+      onResume: () => _invoke('resume', const {}),
+      onPause: () => _invoke('pause', const {}),
+      onHide: () => _invoke('pause', const {}),
+    );
+  }
+
+  @override
   void dispose() {
+    _lifecycle?.dispose();
     _events?.cancel();
     super.dispose();
   }

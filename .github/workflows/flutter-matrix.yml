@@ -6,6 +6,13 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '0 2 * * 1' # UTC 02:00 周一（北京时间 10:00）
+  # 依赖或本工作流变更时自动跑一次（公开仓库 Actions 免费，不占额度）
+  push:
+    branches: [main]
+    paths:
+      - 'app/pubspec.yaml'
+      - 'app/pubspec.lock'
+      - '.github/workflows/flutter-matrix.yml'
 
 env:
   PUB_HOSTED_URL: https://pub.flutter-io.cn
