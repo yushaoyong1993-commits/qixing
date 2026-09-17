@@ -36,12 +36,15 @@ jobs:
           cache: true
 
       - name: 依赖
+        working-directory: app
         run: flutter pub get
 
       - name: 静态分析
+        working-directory: app
         run: flutter analyze
 
       - name: 单元/系统测试
+        working-directory: app
         run: flutter test
 
   # ---------- 出包：release APK（arm64 单架构，体积小） ----------
