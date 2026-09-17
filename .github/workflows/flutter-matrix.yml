@@ -84,3 +84,19 @@ jobs:
           flutter pub get
           flutter build bundle --target-platform android-arm64
           echo "::notice title=解除固定可行::最新 stable 上 objective_c 钩子编译通过，可删除 dependency_overrides"
+
+      # 实验终局：在新 SDK + 已解除固定的前提下，完整构建 release APK（端到端证据）
+      - name: 实验｜用最新 stable 完整构建 release APK（已解 pin）
+        continue-on-error: true
+        working-directory: app
+        run: |
+          flutter build apk --release --target-platform android-arm64
+          ls -lh build/app/outputs/flutter-apk/
+
+      - name: 上传实验包（最新 stable · 已解 pin）
+        if: ${{ always() && hashFiles('app/build/app/outputs/flutter-apk/app-release.apk') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-latest-stable-unpinned
+          path: app/build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 7
