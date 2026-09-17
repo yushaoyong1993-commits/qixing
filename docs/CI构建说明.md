@@ -135,3 +135,40 @@ flutter analyze     # 约 10 秒
 flutter test        # 约 10 秒、61 个用例
 ```
 这两条完全跑得动（占用 <1 GB），是日常开发的主要反馈手段；只有"出安装包"才交给云端。
+
+---
+
+## 九、正式签名（已接入，可选启用）
+
+CI 支持**可选正式签名**：配置了 Secrets 就用正式 keystore，未配置则自动回退 debug 签名（构建不会失败）。
+
+### 本地已生成的固定 release keystore
+| 项 | 值 |
+|---|---|
+| 文件 | `~/basho-signing/basho-release.jks`（**勿提交**，已在 `.gitignore` 排除） |
+| 别名 | `basho` |
+| 口令 | 见 `~/basho-signing/CREDENTIALS.txt`（600 权限） |
+| **SHA1**（高德 Android key 需绑定） | `88:35:81:28:73:BE:15:53:7A:D8:D1:B2:D5:29:1F:D9:AE:DF:BF:5A` |
+| SHA256 | `FC:EC:52:63:30:AF:AD:7E:36:E6:DA:02:41:6D:D0:CE:7E:49:4E:82:28:A0:84:49:5D:B6:01:CD:B6:7C:81:99` |
+
+### 在 GitHub 启用正式签名
+仓库 → Settings → Secrets and variables → Actions → New repository secret：
+
+| Secret | 取值 |
+|---|---|
+| `KEYSTORE_BASE64` | `base64 -w0 ~/basho-signing/basho-release.jks` 的输出 |
+| `KEYSTORE_PASSWORD` | CREDENTIALS.txt 里的 storePassword |
+| `KEY_ALIAS` | `basho` |
+| `KEY_PASSWORD` | 同 storePassword |
+
+### 本地启用（可选）
+`app/android/key.properties`：
+```properties
+storeFile=/home/yushaoyong/basho-signing/basho-release.jks
+storePassword=<口令>
+keyAlias=basho
+keyPassword=<口令>
+```
+
+### 高德原生 SDK 必须绑定 SHA1
+包名 `com.basho.basho` + 签名 SHA1（上面那串）→ 加到高德控制台该 Android key 下；建议把**本地 debug keystore 的 SHA1** 也一并加上，方便真机调试。

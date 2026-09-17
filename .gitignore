@@ -6,3 +6,9 @@ app/.dart_tool/
 .DS_Store
 __pycache__/
 .darthome/
+# —— 签名相关（禁止提交）——
+app/android/key.properties
+*.jks
+*.keystore
+*.b64
+KEYSTORE_BASE64.txt
