@@ -12,7 +12,7 @@ on:
 
 # 只用免费额度内的 Linux Runner（1x 计费）
 env:
-  FLUTTER_VERSION: '3.47.2'
+  FLUTTER_VERSION: '3.47.4'
   PUB_HOSTED_URL: https://pub.flutter-io.cn
   # 与本地 android/gradle.properties 一致：8GB 级机器也能编，云端更快
   GRADLE_OPTS: '-Dorg.gradle.jvmargs=-Xmx3g'
