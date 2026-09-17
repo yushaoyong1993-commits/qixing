@@ -65,17 +65,15 @@ jobs:
         run: flutter test
 
       # 实验：临时移除 dependency_overrides，看新 SDK 下 objective_c 钩子能否编译
+      # 注意：YAML run 块里不要嵌套 heredoc（缩进终止符在 bash 中不生效），故用 sed
       - name: 实验｜尝试解除 path_provider_foundation 固定
         continue-on-error: true
         working-directory: app
         run: |
-          python3 - <<'PYEOF'
-          p = 'pubspec.yaml'
-          s = open(p).read()
-          s = s.split('# —— 构建兼容性修复 ——')[0].rstrip() + '\n'
-          open(p, 'w').write(s)
-          print('已临时移除 dependency_overrides')
-          PYEOF
+          cp pubspec.yaml /tmp/pubspec.yaml.bak
+          sed -i '/# —— 构建兼容性修复 ——/,$d' pubspec.yaml
+          echo "移除后 dependency_overrides 出现次数：$(grep -c dependency_overrides pubspec.yaml || true)"
+          echo "--- pubspec 末尾 ---"; tail -3 pubspec.yaml
           flutter pub get
           flutter build bundle --target-platform android-arm64
           echo "::notice title=解除固定可行::最新 stable 上 objective_c 钩子编译通过，可删除 dependency_overrides"
