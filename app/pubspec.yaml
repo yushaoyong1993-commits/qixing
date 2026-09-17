@@ -102,3 +102,11 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+# —— 构建兼容性修复 ——
+# path_provider_foundation >= 2.5.0(部分版本) / 2.6.0 会拉入 objective_c，
+# 其 native-assets 构建钩子使用了当前 Flutter SDK 尚未提供的 Architecture.arm64e，
+# 会导致 Android 构建在 :app:compileFlutterBuildDebug 阶段直接失败。
+# 固定到 2.5.1（无 objective_c 依赖）。
+dependency_overrides:
+  path_provider_foundation: 2.5.1
