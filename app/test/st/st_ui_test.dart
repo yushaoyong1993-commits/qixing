@@ -203,9 +203,17 @@ void main() {
   testWidgets('ST-U06 统计页：英制单位下显示 mi', (tester) async {
     final db = await openInMemoryDatabase();
     addTearDown(db.close);
+    // 日期必须相对"今天"，否则不在今日/本周区间 → 周期数据为 0（用例曾因此产生假失败）
+    final now = DateTime.now();
     await tester.pumpWidget(ProviderScope(
       overrides: _overrides(db,
-          rides: [_ride(km: 16.0934)], settings: {UnitPrefs.keyUnitSystem: 'imperial'}),
+          rides: [
+            _ride(
+              km: 16.0934,
+              at: DateTime(now.year, now.month, now.day, 8),
+            )
+          ],
+          settings: {UnitPrefs.keyUnitSystem: 'imperial'}),
       child: const MaterialApp(home: StatsPage()),
     ));
     await tester.pumpAndSettle();
