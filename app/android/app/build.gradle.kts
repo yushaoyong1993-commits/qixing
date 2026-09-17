@@ -83,3 +83,8 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // 高德 3D 地图原生 SDK（原生 PlatformView 地图用；Maven 仓库已在 settings.gradle.kts 配置）
+    implementation("com.amap.api:3dmap:latest.integration")
+}
