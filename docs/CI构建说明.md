@@ -187,3 +187,19 @@ keyPassword=<口令>
 | 高德 key | Web 端 JS key | manifest `com.amap.api.v2.apikey` = **Android 平台 key**（需绑定包名+签名 SHA1） |
 
 **真机验证前提**：高德控制台需把 `com.basho.basho` 的签名 SHA1 加到该 Android key 上（keystore SHA1 见第九章；若非正式签名，则加对应 debug keystore 的 SHA1）。
+
+---
+
+## 十一、B2 升级记录（Flutter 补丁升级 + 解除依赖固定）
+
+| 项 | 变更前 | 变更后 |
+|---|---|---|
+| CI Flutter 版本 | 3.47.2 | **3.47.4**（stable 补丁版） |
+| `dependency_overrides` | 固定 `path_provider_foundation: 2.5.1` | **已移除**（现解析为 2.6.0 + `objective_c 9.6.1`） |
+| 动机 | 3.47.2 的 native-assets 工具链缺少 `Architecture.arm64e`，导致 objective_c 钩子编译失败 | CI matrix 实测：3.47.4 上 `analyze + test + build` 全绿，可安全解 pin |
+
+**本地开发提示**：本机 SDK 仍是 3.47.2，`flutter analyze` / `flutter test` 不受影响；
+但**本地打 APK** 需要把 SDK 升到 3.47.4（否则原生钩子会失败），或直接交给 CI 出包：
+```bash
+cd ~/dsh_workspace/qixing/.tools/flutter && git fetch --tags && git checkout 3.47.4
+```
