@@ -172,3 +172,18 @@ keyPassword=<口令>
 
 ### 高德原生 SDK 必须绑定 SHA1
 包名 `com.basho.basho` + 签名 SHA1（上面那串）→ 加到高德控制台该 Android key 下；建议把**本地 debug keystore 的 SHA1** 也一并加上，方便真机调试。
+
+---
+
+## 十、地图实现（已切换为原生 SDK）
+
+| 项 | 旧方案 | 现方案 |
+|---|---|---|
+| 地图渲染 | WebView + 高德 JS API | **Android 原生高德 SDK PlatformView**（`TextureMapView`） |
+| 依赖 | `webview_flutter` | `com.amap.api:3dmap`（原生，Maven: maven.amap.com） |
+| 白屏问题 | 切页返回时偶发 Canvas 丢失，需 `map.resize()`/重建兜底 | 原生视图，无此问题 |
+| 交互 | JS 桥接、帧率偏低 | 原生手势，帧率与省电更好 |
+| Dart 组件 | `AmapMapView`（已删除） | `AmapNativeView`（同构 API：render/renderNav/moveTo/fitRoute/refresh/rebuild） |
+| 高德 key | Web 端 JS key | manifest `com.amap.api.v2.apikey` = **Android 平台 key**（需绑定包名+签名 SHA1） |
+
+**真机验证前提**：高德控制台需把 `com.basho.basho` 的签名 SHA1 加到该 Android key 上（keystore SHA1 见第九章；若非正式签名，则加对应 debug keystore 的 SHA1）。

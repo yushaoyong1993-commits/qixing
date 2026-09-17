@@ -157,6 +157,16 @@ class AmapNativeViewState extends State<AmapNativeView> {
 
   void refresh() => _invoke('refresh', const {});
 
+  /// 与 WebView 版保持同构：原生地图无需销毁重建，这里重放最近渲染内容并刷新即可
+  /// （调用点无需感知两版差异）。
+  void rebuild() {
+    _invoke('refresh', const {});
+    final render = _lastRender;
+    if (render != null) _invoke('render', render);
+    final nav = _lastRenderNav;
+    if (nav != null) _invoke('renderNav', nav);
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!_supported) {

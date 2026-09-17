@@ -4,8 +4,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:basho/app.dart';
 import 'package:basho/data/providers.dart';
 import 'package:basho/domain/stats/aggregate.dart' as k;
+import 'package:basho/ui/widgets/amap_native_view.dart';
 
 void main() {
+  // 原生地图 PlatformView 在测试环境无平台实现 → 走降级占位
+  AmapNativeView.enabled = false;
+
   testWidgets('M0 骨架：四文字 Tab 可切换、首页 Hero 存在（覆盖 rides 为空流）', (tester) async {
     await tester.pumpWidget(
       ProviderScope(

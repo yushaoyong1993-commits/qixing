@@ -12,7 +12,7 @@ import '../../data/route_planner.dart';
 import '../../domain/record/session_machine.dart';
 import '../../domain/record/voice_announcer.dart';
 import '../../theme/app_theme.dart';
-import '../widgets/amap_map_view.dart';
+import '../widgets/amap_native_view.dart';
 
 /// 记录页（M1）：真实 GPS 定位驱动（速度/距离/爬升都来自位置流）+ 会话状态机 + 草稿 + 保存。
 class RecordPage extends ConsumerStatefulWidget {
@@ -44,7 +44,7 @@ class _RecordPageState extends ConsumerState<RecordPage> {
   Timer? _ticker;
 
   // 实时地图（当前位置 + 已骑轨迹）
-  final GlobalKey<AmapMapViewState> _liveMapKey = GlobalKey<AmapMapViewState>();
+  final GlobalKey<AmapNativeViewState> _liveMapKey = GlobalKey<AmapNativeViewState>();
   bool _liveMapReady = false;
   DateTime _lastMapRender = DateTime.fromMillisecondsSinceEpoch(0);
 
@@ -581,9 +581,10 @@ class _RecordPageState extends ConsumerState<RecordPage> {
           height: 220,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
-            child: AmapMapView(
+            child: AmapNativeView(
               key: _liveMapKey,
               initialZoom: 16,
+              myLocationEnabled: false,
               onTapLngLat: (lng, lat) {},
               onError: (msg) {},
               onReady: () {

@@ -6,8 +6,12 @@ import 'package:basho/data/activity_repository.dart';
 import 'package:basho/data/providers.dart';
 import 'package:basho/data/route_repository.dart';
 import 'package:basho/ui/pages/record_page.dart';
+import 'package:basho/ui/widgets/amap_native_view.dart';
 
 void main() {
+  // 原生地图 PlatformView 在测试环境无平台实现 → 走降级占位
+  AmapNativeView.enabled = false;
+
   testWidgets('M1 闭环①：记录→停止→保存 → 写入数据库', (tester) async {
     final db = await openInMemoryDatabase();
     addTearDown(db.close);

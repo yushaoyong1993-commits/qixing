@@ -8,7 +8,7 @@ import '../../data/providers.dart';
 import '../../data/route_planner.dart';
 import '../../domain/stats/aggregate.dart' as k;
 import '../../theme/app_theme.dart';
-import '../widgets/amap_map_view.dart';
+import '../widgets/amap_native_view.dart';
 import '../widgets/ele_speed_chart.dart';
 
 /// 活动详情：指标 + **真实轨迹（高德地图显示）** + 删除。
@@ -22,7 +22,7 @@ class ActivityDetailPage extends ConsumerStatefulWidget {
 }
 
 class _ActivityDetailPageState extends ConsumerState<ActivityDetailPage> {
-  final GlobalKey<AmapMapViewState> _mapKey = GlobalKey<AmapMapViewState>();
+  final GlobalKey<AmapNativeViewState> _mapKey = GlobalKey<AmapNativeViewState>();
   List<SimpleTrack> _tracks = const [];
   List<LapRecord> _laps = const [];
   bool _loading = true;
@@ -152,9 +152,10 @@ class _ActivityDetailPageState extends ConsumerState<ActivityDetailPage> {
           height: 260,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
-            child: AmapMapView(
+            child: AmapNativeView(
               key: _mapKey,
               initialZoom: 15,
+              myLocationEnabled: false,
               onTapLngLat: (lng, lat) {},
               onError: (msg) {},
               onReady: _drawTrack,

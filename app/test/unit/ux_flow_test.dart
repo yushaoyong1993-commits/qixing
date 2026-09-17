@@ -12,6 +12,7 @@ import 'package:basho/ui/pages/settings_page.dart';
 import 'package:basho/ui/pages/stats_page.dart';
 import 'package:basho/data/route_repository.dart';
 import 'package:basho/domain/stats/aggregate.dart' as k;
+import 'package:basho/ui/widgets/amap_native_view.dart';
 
 /// 卸载并让 Drift/ Stream 的零延时计时器跑完，避免 pending timer 断言
 Future<void> _flush(WidgetTester tester) async {
@@ -20,6 +21,9 @@ Future<void> _flush(WidgetTester tester) async {
 }
 
 void main() {
+  // 原生地图 PlatformView 在测试环境无平台实现 → 走降级占位
+  AmapNativeView.enabled = false;
+
   test('单位偏好：公制/英制换算正确', () {
     const metric = UnitPrefs(UnitSystem.metric);
     const imperial = UnitPrefs(UnitSystem.imperial);

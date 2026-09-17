@@ -11,7 +11,7 @@ import '../../data/route_repository.dart';
 import '../../domain/nav/route_navigator.dart';
 import '../../domain/record/voice_announcer.dart';
 import '../../theme/app_theme.dart';
-import '../widgets/amap_map_view.dart';
+import '../widgets/amap_native_view.dart';
 
 /// 沿路线骑行导航（RT-06）：实时进度 / 剩余距离 / 转向提示 / 偏航提醒 / 到达播报。
 /// 说明：路线点存的是 GCJ-02（高德），GPS 为 WGS84，进入导航前统一转到 GCJ-02 计算与显示。
@@ -25,7 +25,7 @@ class NavigationPage extends ConsumerStatefulWidget {
 }
 
 class _NavigationPageState extends ConsumerState<NavigationPage> {
-  final GlobalKey<AmapMapViewState> _mapKey = GlobalKey<AmapMapViewState>();
+  final GlobalKey<AmapNativeViewState> _mapKey = GlobalKey<AmapNativeViewState>();
   final VoiceAnnouncer _voice = VoiceAnnouncer();
 
   late final RouteNavigator _nav;
@@ -170,9 +170,10 @@ class _NavigationPageState extends ConsumerState<NavigationPage> {
         children: [
           _headCard(p, u),
           Expanded(
-            child: AmapMapView(
+            child: AmapNativeView(
               key: _mapKey,
               initialZoom: 16,
+              myLocationEnabled: false,
               onTapLngLat: (lng, lat) {},
               onError: (msg) {},
               onReady: () {

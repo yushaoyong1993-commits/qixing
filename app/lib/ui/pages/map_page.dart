@@ -9,7 +9,7 @@ import '../../data/providers.dart';
 import '../../data/route_planner.dart';
 import '../../data/route_repository.dart';
 import '../../theme/app_theme.dart';
-import '../widgets/amap_map_view.dart';
+import '../widgets/amap_native_view.dart';
 import '../widgets/not_ready.dart';
 import 'navigation_page.dart';
 
@@ -75,7 +75,7 @@ class MapPage extends ConsumerStatefulWidget {
 }
 
 class _MapPageState extends ConsumerState<MapPage> {
-  final GlobalKey<AmapMapViewState> _mapKey = GlobalKey<AmapMapViewState>();
+  final GlobalKey<AmapNativeViewState> _mapKey = GlobalKey<AmapNativeViewState>();
   List<double>? _myLoc;
   bool _locating = false;
 
@@ -184,9 +184,10 @@ class _MapPageState extends ConsumerState<MapPage> {
           ),
           SizedBox(
             height: 280,
-            child: AmapMapView(
+            child: AmapNativeView(
               key: _mapKey,
               initialZoom: 14,
+              myLocationEnabled: false,
               onReady: () {
                 // WebView 就绪后再应用定位与刷新，避免瓦片因尺寸/时序问题不显示
                 _mapKey.currentState?.refresh();
@@ -290,7 +291,7 @@ class _MapPageState extends ConsumerState<MapPage> {
                 height: 150,
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(10),
-                  child: AmapMapView(
+                  child: AmapNativeView(
                     initialZoom: 14,
                     onTapLngLat: (lng, lat) {},
                     onReady: () {},
@@ -445,7 +446,7 @@ class RouteEditorPage extends ConsumerStatefulWidget {
 }
 
 class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
-  final GlobalKey<AmapMapViewState> _mapKey = GlobalKey<AmapMapViewState>();
+  final GlobalKey<AmapNativeViewState> _mapKey = GlobalKey<AmapNativeViewState>();
   final RoutePlanner _planner = RoutePlanner();
   late final TextEditingController _name;
 
@@ -671,9 +672,10 @@ class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
             ),
           ),
           Expanded(
-            child: AmapMapView(
+            child: AmapNativeView(
               key: _mapKey,
               initialZoom: 15,
+              myLocationEnabled: false,
               onTapLngLat: _onTap,
               onReady: () {
                 _render();

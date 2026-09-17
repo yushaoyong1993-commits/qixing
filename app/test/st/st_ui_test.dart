@@ -16,6 +16,7 @@ import 'package:basho/ui/pages/navigation_page.dart';
 import 'package:basho/ui/pages/record_page.dart';
 import 'package:basho/ui/pages/settings_page.dart';
 import 'package:basho/ui/pages/stats_page.dart';
+import 'package:basho/ui/widgets/amap_native_view.dart';
 
 /// ST 系统测试（页面层）：功能点 + 跨模块关联。
 /// 说明：涉及 Drift 流的用例统一在结束前卸载并 flush，避免 pending timer 断言。
@@ -59,6 +60,9 @@ k.RideLite _ride({
     );
 
 void main() {
+  // 原生地图 PlatformView 在测试环境无平台实现 → 走降级占位
+  AmapNativeView.enabled = false;
+
   // ---------- ST-U01 记录：开始→计时→保存闭环 ----------
   testWidgets('ST-U01 记录页：开始计时→停止→保存，落库一条记录', (tester) async {
     final db = await openInMemoryDatabase();
