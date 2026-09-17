@@ -11,63 +11,71 @@ env:
   PUB_HOSTED_URL: https://pub.flutter-io.cn
 
 jobs:
-  check:
+  # ① 锁定版本（与本地/主流水线一致）：必须通过
+  locked:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - flutter: '3.47.2' # 与本地/主流水线一致的锁定版本
-            experimental: false
-          - flutter: stable # 最新 stable（实验性，失败不阻塞）
-            experimental: true
-    # 实验性组合失败只做提示，不影响整体结论
-    continue-on-error: ${{ matrix.experimental }}
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: ${{ matrix.flutter }}
+          flutter-version: '3.47.2'
           channel: stable
           cache: true
-
       - name: 环境信息
         run: flutter --version
-
       - name: 依赖
         working-directory: app
         run: flutter pub get
-
       - name: 静态分析
         working-directory: app
         run: flutter analyze
-
       - name: 全量测试
         working-directory: app
         run: flutter test
 
-      # —— 实验：在最新 SDK 上尝试解除 path_provider_foundation 固定 ——
-      # 若这一步成功，说明新 SDK 已支持 objective_c 的 native-assets 钩子，
-      # 我们就可以删掉 pubspec.yaml 里的 dependency_overrides 并升级依赖。
-      - name: 实验｜尝试解除依赖固定并编译 Dart 资源
-        if: ${{ matrix.experimental }}
+  # ② 最新 stable（实验性，失败不阻塞）：探明能否升级 SDK / 解除依赖固定
+  #    注意：subosito/flutter-action 取最新 stable 时只给 channel，不给 flutter-version
+  latest-stable:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: 环境信息
+        run: flutter --version
+      - name: 依赖
+        working-directory: app
+        run: flutter pub get
+      - name: 静态分析
+        working-directory: app
+        run: flutter analyze
+      - name: 全量测试
+        working-directory: app
+        run: flutter test
+
+      # 实验：临时移除 dependency_overrides，看新 SDK 下 objective_c 钩子能否编译
+      - name: 实验｜尝试解除 path_provider_foundation 固定
         continue-on-error: true
         working-directory: app
         run: |
-          cp pubspec.yaml /tmp/pubspec.bak
-          python3 - <<'PY'
+          python3 - <<'PYEOF'
           p = 'pubspec.yaml'
           s = open(p).read()
           s = s.split('# —— 构建兼容性修复 ——')[0].rstrip() + '\n'
           open(p, 'w').write(s)
           print('已临时移除 dependency_overrides')
-          PY
+          PYEOF
           flutter pub get
           flutter build bundle --target-platform android-arm64
-          echo "::notice title=解除固定可行::最新 stable 上 objective_c 钩子编译通过，可考虑删除 dependency_overrides"
+          echo "::notice title=解除固定可行::最新 stable 上 objective_c 钩子编译通过，可删除 dependency_overrides"
