@@ -40,7 +40,6 @@ dependencies:
   # —— M1 依赖注入 / 响应式 ——
   flutter_riverpod: ^2.5.1
   geolocator: ^13.0.1
-  flutter_map: ^8.3.2
   latlong2: ^0.10.1
   http: ^1.6.0
   webview_flutter: ^4.14.1
