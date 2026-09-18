@@ -218,3 +218,37 @@ cd ~/dsh_workspace/qixing/.tools/flutter && git fetch --tags && git checkout 3.4
 **绑定要求**：Android 平台 key 必须绑定 **包名 `com.basho.basho`** + **签名 SHA1**：
 - 正式签名：`88:35:81:28:73:BE:15:53:7A:D8:D1:B2:D5:29:1F:D9:AE:DF:BF:5A`
 - 本地调试：`06:1B:21:FA:30:00:22:DD:F9:0C:2F:D9:23:BE:33:35:D7:C6:0F:6E`
+
+---
+
+## 十三、发布流程（tag → Release → 手机安装）
+
+```bash
+git tag -a v0.1.1 -m "说明" && git push origin v0.1.1
+```
+CI 自动：`analyze + 全量测试` → 安装 SDK/NDK → **正式签名**构建 arm64 release → 校验签名指纹 → **发布 GitHub Release 并附 APK**。
+
+产物地址（公开可下载，手机浏览器直接开）：
+```
+https://github.com/yushaoyong1993-commits/qixing/releases/download/<tag>/app-release.apk
+```
+
+### v0.1.1 产物核验结果（本地只读校验，未构建）
+| 项 | 结果 |
+|---|---|
+| 签名 SHA-1 | `8835812873be15537ad8d1b2d5291fd9aedfbf5a` = **88:35:81:28:73:BE:15:53:7A:D8:D1:B2:D5:29:1F:D9:AE:DF:BF:5A** ✅ 与高德发布版绑定一致 |
+| 包名 | `com.basho.basho`（compileSdk/targetSdk 36） |
+| 高德 key | `5f570e3f…`（Android 平台） |
+| 前台服务 | `foregroundServiceType=location` ✅ |
+| 权限 | 9 条（定位/网络/前台服务/通知/唤醒锁等） |
+| 体积 | 59 MB（含 arm64-v8a + armeabi-v7a + x86_64 三架构 .so） |
+
+**体积优化（可选）**：插件 AAR 自带多 ABI，可在 `app/android/app/build.gradle.kts` 加
+```kotlin
+android { defaultConfig { ndk { abiFilters += listOf("arm64-v8a") } } }
+```
+或改用 `flutter build apk --split-per-abi`，单架构包可降到 ~25 MB。
+
+### 踩坑记录：Secrets 尾随换行
+从终端复制口令时 `awk '{print $2}' | clip.exe` 会**带上换行**，粘进 Secrets 后长度变 25，导致签名失败。
+CI 已在「配置正式签名」步骤统一修剪 `\r\n` 与空格；「校验签名配置」步骤会用 keytool 提前校验并把具体错项写入 GitHub 注解。
