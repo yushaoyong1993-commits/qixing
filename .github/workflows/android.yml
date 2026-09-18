@@ -104,6 +104,18 @@ jobs:
           flutter build apk --release --target-platform android-arm64
           ls -lh build/app/outputs/flutter-apk/
 
+      - name: 校验签名指纹（确认是否用了正式签名）
+        working-directory: app
+        run: |
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          SIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          ls -lh "$APK"
+          if [ -x "$SIGNER" ]; then
+            "$SIGNER" verify --print-certs "$APK" | grep -i "SHA-1" | head -3 || true
+          fi
+          echo "参考：正式签名 SHA-1 = 88:35:81:28:73:BE:15:53:7A:D8:D1:B2:D5:29:1F:D9:AE:DF:BF:5A"
+          echo "若上面打印的 SHA-1 不是这串，说明本次未启用正式签名（未配置 Secrets），此时真机地图会因签名不匹配而无法加载。"
+
       - name: 上传 APK 产物
         uses: actions/upload-artifact@v4
         with:
