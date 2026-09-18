@@ -64,6 +64,13 @@ ndkVersion = "28.2.13676358"
 
     buildTypes {
         release {
+            // 混淆/裁剪：必须配合 proguard-rules.pro 中的高德 keep 规则（否则原生地图 JNI 会崩）
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
             // 有正式签名（CI Secrets / key.properties）就用它；否则回退 debug 签名
             signingConfig = if (hasReleaseSigning) {
                 signingConfigs.getByName("release")
