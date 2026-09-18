@@ -10,6 +10,10 @@ on:
     branches: [main]
     tags: ['v*']
 
+# 发布 Release 需要 contents: write
+permissions:
+  contents: write
+
 # 只用免费额度内的 Linux Runner（1x 计费）
 env:
   FLUTTER_VERSION: '3.47.4'
@@ -115,6 +119,18 @@ jobs:
           fi
           echo "参考：正式签名 SHA-1 = 88:35:81:28:73:BE:15:53:7A:D8:D1:B2:D5:29:1F:D9:AE:DF:BF:5A"
           echo "若上面打印的 SHA-1 不是这串，说明本次未启用正式签名（未配置 Secrets），此时真机地图会因签名不匹配而无法加载。"
+
+      - name: 打 tag 时发布 Release（手机可直接下载安装）
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        working-directory: app
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "build/app/outputs/flutter-apk/app-release.apk#basho-$GITHUB_REF_NAME-arm64.apk" \
+            --title "跋涉 $GITHUB_REF_NAME" \
+            --notes "CI 自动构建的 arm64 release 包。\n\n安装前请确认 APK 签名 SHA-1 与高德后台绑定的指纹一致（见构建日志的「校验签名指纹」步骤）。" \
+            --latest
 
       - name: 上传 APK 产物
         uses: actions/upload-artifact@v4
