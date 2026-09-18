@@ -143,6 +143,21 @@ jobs:
           flutter build apk --release --target-platform android-arm64
           ls -lh build/app/outputs/flutter-apk/
 
+      - name: 回归校验｜高德类未被 R8 裁剪（防止原生地图 JNI 闪退复现）
+        working-directory: app
+        run: |
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          MISSING=0
+          for C in "com/autonavi/base/amap/mapcore/ClassTools" "com/amap/api/maps/TextureMapView" "com/amap/api/maps/MapsInitializer"; do
+            if unzip -p "$APK" 'classes*.dex' 2>/dev/null | grep -aq "$C"; then
+              echo "✅ APK 中保留 $C"
+            else
+              echo "::error title=R8 裁剪了高德类::${C} 不在 APK dex 中 —— 原生地图会在 JNI_OnLoad 阶段 SIGABRT 闪退（v0.1.2 故障根因）。请检查 proguard-rules.pro 的 keep 规则与 enableR8.fullMode=false"
+              MISSING=1
+            fi
+          done
+          [ "$MISSING" = "0" ] || exit 1
+
       - name: 校验签名指纹（确认是否用了正式签名）
         working-directory: app
         run: |

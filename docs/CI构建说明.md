@@ -252,3 +252,36 @@ android { defaultConfig { ndk { abiFilters += listOf("arm64-v8a") } } }
 ### 踩坑记录：Secrets 尾随换行
 从终端复制口令时 `awk '{print $2}' | clip.exe` 会**带上换行**，粘进 Secrets 后长度变 25，导致签名失败。
 CI 已在「配置正式签名」步骤统一修剪 `\r\n` 与空格；「校验签名配置」步骤会用 keytool 提前校验并把具体错项写入 GitHub 注解。
+
+---
+
+## 十四、故障档案：原生地图闪退（R8 裁剪高德反射类）
+
+**现象**：切到地图页瞬间闪退（App 直接关闭）。
+
+**崩溃证据**（adb logcat -b crash）：
+```
+signal 6 (SIGABRT)  name: GLThread
+Abort message: 'JNI DETECTED ERROR IN APPLICATION: java_class == null
+    in call to GetStaticMethodID'
+Pending exception java.lang.ClassNotFoundException:
+    com.autonavi.base.amap.mapcore.ClassTools
+```
+
+**根因**：`android.enableR8.fullMode=true` 会按“无反射”假设激进裁剪，把高德 SDK 内部供 native 层反射调用的类删掉；
+高德 `libAMapOpenMap.so` 在 GL 线程 `JNI_OnLoad` 阶段 `GetStaticMethodID` 拿不到类 → ART 主动 abort → SIGABRT。
+
+**修复**：
+1. 新增 `app/android/app/proguard-rules.pro`（keep `com.amap.api.**` / `com.autonavi.**` / `com.loc.**`，保留 native 方法与枚举）；
+2. release 显式 `proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")` + `isMinifyEnabled/shrinkResources`；
+3. `android.enableR8.fullMode=false`（**不要为了体积再打开**）。
+
+**回归防线**：CI 出包后自动检查 APK 的 `classes*.dex` 是否仍含
+`com/autonavi/base/amap/mapcore/ClassTools`、`com/amap/api/maps/TextureMapView`、`com/amap/api/maps/MapsInitializer`，
+缺失则直接 fail（防止此故障再次流入发布包）。
+
+**验证方式**：同一台设备对比 dex
+| 版本 | ClassTools 是否在 dex |
+|---|---|
+| v0.1.2 | 否（0 次）→ 闪退 |
+| v0.1.3 | 是（1 次）→ 正常 |
