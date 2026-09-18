@@ -454,7 +454,10 @@ class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
   /// 分段路径：每段为 GCJ-02 的 [[lng, lat], ...]，段首尾相接。
   final List<List<List<double>>> _segs = [];
   List<double>? _myLoc;
-  bool _planning = false;
+
+  /// 正在等待道路规划的段（按对象标识记录，撤销/并发都安全）
+  final Set<List<List<double>>> _pending = {};
+  bool get _planning => _pending.isNotEmpty;
   double _distM = 0;
   /// 编辑已有路线时，原始段数量（不可被"撤销"删掉）
   int _baseSegs = 0;
@@ -551,7 +554,6 @@ class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
   }
 
   Future<void> _onTap(double lng, double lat) async {
-    if (_planning) return;
     final p = [lng, lat];
     // 首个点（新建时）
     if (_segs.isEmpty) {
@@ -560,27 +562,39 @@ class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
       return;
     }
     final prev = _segs.last.last;
-    setState(() => _planning = true);
-    final r = await _planner.planRidingGcj(LatLng(prev[1], prev[0]), LatLng(lat, lng));
-    if (!mounted) return;
+
+    // 1) 立即给出反馈：先放一个"临时直线段"（并在 UI 上提示"规划中"），
+    //    避免用户点完等好几秒才看到任何变化。
+    final seg = <List<double>>[prev, p];
     setState(() {
-      if (r != null) {
-        final seg = <List<double>>[prev];
-        for (final q in r.points.skip(1)) {
-          seg.add([q.longitude, q.latitude]);
-        }
-        _segs.add(seg);
-        _distM += r.distanceM;
-      } else {
-        _segs.add([prev, p]); // 规划失败 → 直线
-      }
-      _planning = false;
+      _segs.add(seg);
+      _pending.add(seg);
     });
     _render();
-    if (r == null && mounted) {
+
+    // 2) 后台按道路规划；返回后原地把该段替换为真实路径（"吸附"到道路）
+    final r = await _planner.planRidingGcj(LatLng(prev[1], prev[0]), LatLng(lat, lng));
+    if (!mounted) return;
+    final stillThere = _segs.contains(seg);
+    setState(() => _pending.remove(seg));
+    if (r != null && stillThere) {
+      final routed = <List<double>>[prev];
+      for (final q in r.points.skip(1)) {
+        routed.add([q.longitude, q.latitude]);
+      }
+      setState(() {
+        seg
+          ..clear()
+          ..addAll(routed); // 原地修改，保持段标识/顺序稳定
+        _distM = _recalcDist();
+      });
+      _render();
+    } else if (r == null && stillThere && mounted) {
+      // 规划失败：保留直线连接并提示（不再让用户干等）
+      setState(() => _distM = _recalcDist());
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('按道路规划失败（网络/服务/key 限制），本段用直线连接',
-            textAlign: TextAlign.center),
+        content: Text('本段未能按道路规划，已用直线连接', textAlign: TextAlign.center),
+        duration: Duration(seconds: 2),
       ));
     }
   }
@@ -589,7 +603,7 @@ class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
   void _undo() {
     if (_planning || _segs.length <= _baseSegs) return;
     setState(() {
-      _segs.removeLast();
+      _pending.remove(_segs.removeLast());
       _distM = _recalcDist();
     });
     _render();
@@ -625,6 +639,14 @@ class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
   }
 
   Future<void> _save() async {
+    // 若仍有路段在"吸附"中，先等它完成（最多 6 秒），避免把临时直线存进路线
+    if (_pending.isNotEmpty) {
+      final deadline = DateTime.now().add(const Duration(seconds: 6));
+      while (_pending.isNotEmpty && DateTime.now().isBefore(deadline)) {
+        await Future.delayed(const Duration(milliseconds: 120));
+      }
+      if (!mounted) return;
+    }
     final path = _buildPath();
     if (path.length < 2) return;
     final pts = path.map((p) => [p[1], p[0]]).toList(); // → [lat, lng]（GCJ-02）
@@ -692,7 +714,7 @@ class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
           if (_planning)
             const Padding(
               padding: EdgeInsets.only(top: 6),
-              child: Text('正在按高德骑行路线规划…',
+              child: Text('点已放置，正在按道路吸附…',
                   style: TextStyle(fontSize: 12, color: AppTheme.accentInk)),
             ),
           Padding(

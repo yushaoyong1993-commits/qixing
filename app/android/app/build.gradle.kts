@@ -49,6 +49,11 @@ ndkVersion = "28.2.13676358"
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        ndk {
+            // 只打包 arm64-v8a：现代安卓机均为 64 位；插件 AAR 默认携带多 ABI 会显著增大包体
+            abiFilters += listOf("arm64-v8a")
+        }
     }
 
     signingConfigs {

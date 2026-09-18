@@ -116,7 +116,7 @@ class RoutePlanner {
         'destination': '${b.longitude},${b.latitude}',
         'key': kAmapWebServiceKey,
       });
-      final res = await _c.get(uri).timeout(const Duration(seconds: 15));
+      final res = await _c.get(uri).timeout(const Duration(seconds: 8));
       if (res.statusCode != 200) return null;
       final json = jsonDecode(res.body) as Map<String, dynamic>;
       final paths = (json['data']?['paths'] as List?) ?? const [];
