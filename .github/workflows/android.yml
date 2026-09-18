@@ -92,17 +92,29 @@ jobs:
       - name: 校验签名配置（提前发现 Secrets 填错）
         if: ${{ env.KEYSTORE_BASE64 != '' }}
         run: |
-          echo "keystore 文件大小: $(stat -c%s "$KEYSTORE_PATH") 字节"
-          echo "KEY_ALIAS 长度: ${#KEY_ALIAS}"
+          SIZE=$(stat -c%s "$KEYSTORE_PATH")
+          B64LEN=${#KEYSTORE_BASE64}
+          SPLEN=${#KEYSTORE_PASSWORD}
+          KPLEN=${#KEY_PASSWORD}
+          ALEN=${#KEY_ALIAS}
+          echo "诊断 keystore=$SIZE 字节(期望 2710) base64=$B64LEN(期望 3616) storePwd=$SPLEN(期望 24) keyPwd=$KPLEN(期望 24) alias=$ALEN(期望 5)"
+
+          ok=1
+          [ "$SIZE" = "2710" ] || { echo "::error title=KEYSTORE_BASE64 有误::解码后 $SIZE 字节，期望 2710。base64 可能被截断或含多余换行。"; ok=0; }
+          [ "$SPLEN" = "24" ] || { echo "::error title=KEYSTORE_PASSWORD 有误::长度 $SPLEN，期望 24。"; ok=0; }
+          [ "$KPLEN" = "24" ] || { echo "::error title=KEY_PASSWORD 有误::长度 $KPLEN，期望 24（与 KEYSTORE_PASSWORD 相同）。"; ok=0; }
+          [ "$ALEN" = "5" ] || { echo "::error title=KEY_ALIAS 有误::长度 $ALEN，期望 5（应为 basho）。"; ok=0; }
+
           if keytool -list -v -keystore "$KEYSTORE_PATH" -alias "$KEY_ALIAS" \
                -storepass "$KEYSTORE_PASSWORD" -keypass "$KEY_PASSWORD" > /tmp/kt.txt 2>&1; then
             echo "✅ keystore 口令与别名校验通过"
-            grep -E "别名|Alias|SHA1" /tmp/kt.txt | head -3 || true
+            grep -iE "SHA1|SHA-1" /tmp/kt.txt | head -2 || true
           else
-            echo "::error title=签名校验失败::keystore 口令或别名不正确，请检查 Secrets：KEYSTORE_PASSWORD / KEY_PASSWORD / KEY_ALIAS"
-            tail -5 /tmp/kt.txt
-            exit 1
+            echo "::error title=签名校验失败::keytool 校验不通过，请核对 Secrets（口令/别名）"
+            tail -3 /tmp/kt.txt
+            ok=0
           fi
+          [ "$ok" = "1" ] || exit 1
 
       - name: Gradle 缓存
         uses: actions/cache@v4
