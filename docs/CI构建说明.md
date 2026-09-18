@@ -203,3 +203,18 @@ keyPassword=<口令>
 ```bash
 cd ~/dsh_workspace/qixing/.tools/flutter && git fetch --tags && git checkout 3.47.4
 ```
+
+---
+
+## 十二、高德 key 清单（避免混用）
+
+| 用途 | key | 平台类型 | 状态（REST 探测） |
+|---|---|---|---|
+| **原生地图（Android SDK）** | `5f570e3f6ebeae22a61f14349377da78` | Android 平台（待你在控制台核对） | 有效、非 Web 服务（`USERKEY_PLAT_NOMATCH`） |
+| **路线规划（骑行）** | `579bd0817cbc0a1f642508947879682d` | Web 服务 | ✅ `errcode=0` 正常 |
+| 已废弃（WebView 地图，已随 C4 移除） | `a69189b5269db2903026fc6f51165eb9` | Web 端(JS API) | 有效，但**不再使用** |
+| 无效/已删除 | `a357f44a…`、`47c92813…` | — | ❌ `INVALID_USER_KEY` |
+
+**绑定要求**：Android 平台 key 必须绑定 **包名 `com.basho.basho`** + **签名 SHA1**：
+- 正式签名：`88:35:81:28:73:BE:15:53:7A:D8:D1:B2:D5:29:1F:D9:AE:DF:BF:5A`
+- 本地调试：`06:1B:21:FA:30:00:22:DD:F9:0C:2F:D9:23:BE:33:35:D7:C6:0F:6E`
