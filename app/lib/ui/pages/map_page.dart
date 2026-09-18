@@ -293,6 +293,7 @@ class _MapPageState extends ConsumerState<MapPage> {
                   borderRadius: BorderRadius.circular(10),
                   child: AmapNativeView(
                     initialZoom: 14,
+                    myLocationEnabled: false,
                     onTapLngLat: (lng, lat) {},
                     onReady: () {},
                     onError: (msg) {},

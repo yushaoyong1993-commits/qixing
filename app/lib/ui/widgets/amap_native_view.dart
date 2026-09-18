@@ -44,6 +44,7 @@ class AmapNativeViewState extends State<AmapNativeView> {
   AppLifecycleListener? _lifecycle;
   StreamSubscription<dynamic>? _events;
   bool _ready = false;
+  String? _errorText;
 
   /// 最近一次渲染参数（原生就绪前调用会被缓存，就绪后重放）
   Map<String, dynamic>? _lastRender;
@@ -91,7 +92,9 @@ class AmapNativeViewState extends State<AmapNativeView> {
             if (lng != null && lat != null) widget.onTapLngLat(lng, lat);
             break;
           case 'error':
-            widget.onError?.call('${event['msg']}');
+            final msg = '${event['msg']}';
+            widget.onError?.call(msg);
+            if (mounted) setState(() => _errorText = msg);
             break;
         }
       },
@@ -190,15 +193,38 @@ class AmapNativeViewState extends State<AmapNativeView> {
             style: TextStyle(fontSize: 12, color: Color(0xFF9898A3))),
       );
     }
-    return AndroidView(
-      viewType: 'basho/amap',
-      creationParams: <String, dynamic>{
-        'zoom': widget.initialZoom,
-        'center': widget.initialCenter,
-        'myLocationEnabled': widget.myLocationEnabled,
-      },
-      creationParamsCodec: const StandardMessageCodec(),
-      onPlatformViewCreated: _onPlatformViewCreated,
+    return Stack(
+      children: [
+        AndroidView(
+          viewType: 'basho/amap',
+          creationParams: <String, dynamic>{
+            'zoom': widget.initialZoom,
+            'center': widget.initialCenter,
+            'myLocationEnabled': widget.myLocationEnabled,
+          },
+          creationParamsCodec: const StandardMessageCodec(),
+          onPlatformViewCreated: _onPlatformViewCreated,
+        ),
+        if (_errorText != null)
+          Positioned(
+            left: 8,
+            right: 8,
+            bottom: 8,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.68),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                _errorText!,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: Colors.white, fontSize: 11),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
