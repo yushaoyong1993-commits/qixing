@@ -97,7 +97,7 @@ class AmapPlatformView(
         // ② 地图基础设置（仅当可用）
         aMap?.let { m ->
             try {
-                m.mapType = AMap.MAP_TYPE_NORMAL
+                m.mapType = mapTypeOf(params["mapType"] as? String)
                 m.uiSettings.isZoomControlsEnabled = false
                 m.uiSettings.isCompassEnabled = false
                 m.uiSettings.isMyLocationButtonEnabled = false
@@ -143,6 +143,10 @@ class AmapPlatformView(
                     "moveTo" -> { moveTo(call); result.success(null) }
                     "fitRoute" -> { fitRoute(); result.success(null) }
                     "refresh", "resume" -> { mapView?.onResume(); result.success(null) }
+                    "setMapType" -> {
+                        aMap?.mapType = mapTypeOf(call.argument<String>("type"))
+                        result.success(null)
+                    }
                     "pause" -> { mapView?.onPause(); result.success(null) }
                     else -> result.notImplemented()
                 }
@@ -165,6 +169,9 @@ class AmapPlatformView(
             }
         })
     }
+
+    private fun mapTypeOf(type: String?): Int =
+        if (type == "satellite") AMap.MAP_TYPE_SATELLITE else AMap.MAP_TYPE_NORMAL
 
     private fun hasLocationPermission(ctx: Context): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return true

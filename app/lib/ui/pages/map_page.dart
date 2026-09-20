@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
@@ -12,6 +13,7 @@ import '../../theme/app_theme.dart';
 import '../widgets/amap_native_view.dart';
 import '../widgets/not_ready.dart';
 import 'navigation_page.dart';
+import '../../data/poi_service.dart';
 
 /// 定位（GPS WGS84 → 高德 GCJ-02），供地图页与路线页共用。
 /// 返回 GCJ-02 的 [lng, lat]；失败返回 null（silent=true 时不弹提示）。
@@ -79,6 +81,57 @@ class _MapPageState extends ConsumerState<MapPage> {
   List<double>? _myLoc;
   bool _locating = false;
 
+  // —— 地点搜索（高德输入提示）——
+  final TextEditingController _search = TextEditingController();
+  Timer? _debounce;
+  List<PoiTip> _tips = const [];
+  bool _searching = false;
+
+  /// 底图类型：false=标准，true=卫星
+  bool _satellite = false;
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _search.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged(String v) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 350), () => _runSearch(v));
+  }
+
+  Future<void> _runSearch(String v) async {
+    final kw = v.trim();
+    if (kw.isEmpty) {
+      if (mounted) setState(() { _tips = const []; _searching = false; });
+      return;
+    }
+    setState(() => _searching = true);
+    final tips = await ref.read(poiServiceProvider).inputTips(kw);
+    if (!mounted) return;
+    setState(() { _tips = tips; _searching = false; });
+  }
+
+  void _pickTip(PoiTip t) {
+    _search.text = t.name;
+    _search.selection = TextSelection.collapsed(offset: t.name.length);
+    FocusScope.of(context).unfocus();
+    setState(() => _tips = const []);
+    final st = _mapKey.currentState;
+    st?.render(anchors: [
+      [t.lng, t.lat]
+    ], path: const []);
+    st?.moveTo(t.lng, t.lat, zoom: 16);
+  }
+
+  void _setSatellite(bool on) {
+    setState(() => _satellite = on);
+    _mapKey.currentState?.setMapType(on ? 'satellite' : 'normal');
+  }
+
+
   @override
   void initState() {
     super.initState();
@@ -141,28 +194,72 @@ class _MapPageState extends ConsumerState<MapPage> {
       ),
       body: Column(
         children: [
-          // 搜索/规划入口（原型 fake-search）
-          InkWell(
-            onTap: () => showNotReady(context, '搜索地点 / 起终点规划'),
-            child: Container(
-              margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: AppTheme.card2,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Row(
-                children: [
-                  Icon(Icons.search, size: 18, color: AppTheme.txt3),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Text('搜索地点，或规划骑行路线…（未完成）',
-                        style: TextStyle(fontSize: 12.5, color: AppTheme.txt3)),
-                  ),
-                ],
+          // 地点搜索（高德输入提示；选中后地图定位到该点）
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            child: TextField(
+              controller: _search,
+              onChanged: _onSearchChanged,
+              textInputAction: TextInputAction.search,
+              onSubmitted: _runSearch,
+              style: const TextStyle(fontSize: 13),
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: '搜索地点（如：深圳湾公园）',
+                hintStyle: const TextStyle(fontSize: 12.5, color: AppTheme.txt3),
+                prefixIcon: const Icon(Icons.search, size: 18),
+                suffixIcon: _searching
+                    ? const Padding(
+                        padding: EdgeInsets.all(12),
+                        child: SizedBox(
+                            width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)))
+                    : (_search.text.isEmpty
+                        ? null
+                        : IconButton(
+                            icon: const Icon(Icons.close, size: 16),
+                            onPressed: () {
+                              _search.clear();
+                              setState(() => _tips = const []);
+                            },
+                          )),
+                filled: true,
+                fillColor: AppTheme.card2,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(vertical: 10),
               ),
             ),
           ),
+          // 搜索结果
+          if (_tips.isNotEmpty)
+            Container(
+              margin: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+              constraints: const BoxConstraints(maxHeight: 190),
+              decoration: BoxDecoration(
+                color: AppTheme.card,
+                borderRadius: BorderRadius.circular(10),
+                boxShadow: const [BoxShadow(color: Color(0x14000000), blurRadius: 8)],
+              ),
+              child: ListView.separated(
+                shrinkWrap: true,
+                padding: EdgeInsets.zero,
+                itemCount: _tips.length > 6 ? 6 : _tips.length,
+                separatorBuilder: (_, _) => const Divider(height: 1),
+                itemBuilder: (c, i) {
+                  final t = _tips[i];
+                  return ListTile(
+                    dense: true,
+                    leading: const Icon(Icons.place_outlined, size: 18),
+                    title: Text(t.name, style: const TextStyle(fontSize: 13)),
+                    subtitle: Text(t.subtitle,
+                        style: const TextStyle(fontSize: 11, color: AppTheme.txt3)),
+                    onTap: () => _pickTip(t),
+                  );
+                },
+              ),
+            ),
           // 底图样式切换（原型 seg-map；高德卫星层未接入）
           Padding(
             padding: const EdgeInsets.only(left: 12, top: 8),
@@ -170,14 +267,14 @@ class _MapPageState extends ConsumerState<MapPage> {
               children: [
                 ChoiceChip(
                   label: const Text('标准', style: TextStyle(fontSize: 12)),
-                  selected: true,
-                  onSelected: (_) {},
+                  selected: !_satellite,
+                  onSelected: (_) => _setSatellite(false),
                 ),
                 const SizedBox(width: 6),
                 ChoiceChip(
-                  label: const Text('卫星（未完成）', style: TextStyle(fontSize: 12)),
-                  selected: false,
-                  onSelected: (_) => showNotReady(context, '卫星底图'),
+                  label: const Text('卫星', style: TextStyle(fontSize: 12)),
+                  selected: _satellite,
+                  onSelected: (_) => _setSatellite(true),
                 ),
               ],
             ),
@@ -187,6 +284,7 @@ class _MapPageState extends ConsumerState<MapPage> {
             child: AmapNativeView(
               key: _mapKey,
               initialZoom: 14,
+              mapType: _satellite ? 'satellite' : 'normal',
               myLocationEnabled: false,
               onReady: () {
                 // WebView 就绪后再应用定位与刷新，避免瓦片因尺寸/时序问题不显示
@@ -457,6 +555,12 @@ class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
 
   /// 正在等待道路规划的段（按对象标识记录，撤销/并发都安全）
   final Set<List<List<double>>> _pending = {};
+
+  // —— 搜地点加点 ——
+  final TextEditingController _search = TextEditingController();
+  Timer? _debounce;
+  List<PoiTip> _tips = const [];
+  bool _searching = false;
   bool get _planning => _pending.isNotEmpty;
   double _distM = 0;
   /// 编辑已有路线时，原始段数量（不可被"撤销"删掉）
@@ -484,6 +588,8 @@ class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
 
   @override
   void dispose() {
+    _debounce?.cancel();
+    _search.dispose();
     _name.dispose();
     _planner.dispose();
     super.dispose();
@@ -599,6 +705,34 @@ class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
     }
   }
 
+  void _onSearchChanged(String v) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 350), () => _runSearch(v));
+  }
+
+  Future<void> _runSearch(String v) async {
+    final kw = v.trim();
+    if (kw.isEmpty) {
+      if (mounted) setState(() { _tips = const []; _searching = false; });
+      return;
+    }
+    setState(() => _searching = true);
+    final tips = await ref.read(poiServiceProvider).inputTips(kw);
+    if (!mounted) return;
+    setState(() { _tips = tips; _searching = false; });
+  }
+
+  /// 选中搜索结果 → 作为新的一"点"加入路线（自动按道路吸附）
+  Future<void> _pickTipAsPoint(PoiTip t) async {
+    FocusScope.of(context).unfocus();
+    setState(() => _tips = const []);
+    _search.clear();
+    await _onTap(t.lng, t.lat);
+    if (mounted) {
+      _mapKey.currentState?.moveTo(t.lng, t.lat, zoom: 16);
+    }
+  }
+
   /// ③ 撤销：只回退最后一段（保留已完成的道路轨迹），编辑模式下不动原始路径
   void _undo() {
     if (_planning || _segs.length <= _baseSegs) return;
@@ -694,6 +828,56 @@ class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
               decoration: const InputDecoration(labelText: '路线名称'),
             ),
           ),
+          // 搜地点 → 直接加为下一个途经点（自动按道路吸附）
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+            child: TextField(
+              controller: _search,
+              onChanged: _onSearchChanged,
+              onSubmitted: _runSearch,
+              textInputAction: TextInputAction.search,
+              style: const TextStyle(fontSize: 13),
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: '搜索地点并加为途经点',
+                hintStyle: const TextStyle(fontSize: 12.5, color: AppTheme.txt3),
+                prefixIcon: const Icon(Icons.search, size: 18),
+                suffixIcon: _searching
+                    ? const Padding(
+                        padding: EdgeInsets.all(12),
+                        child: SizedBox(
+                            width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)))
+                    : null,
+              ),
+            ),
+          ),
+          if (_tips.isNotEmpty)
+            Container(
+              margin: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+              constraints: const BoxConstraints(maxHeight: 150),
+              decoration: BoxDecoration(
+                color: AppTheme.card,
+                borderRadius: BorderRadius.circular(10),
+                boxShadow: const [BoxShadow(color: Color(0x14000000), blurRadius: 8)],
+              ),
+              child: ListView.separated(
+                shrinkWrap: true,
+                padding: EdgeInsets.zero,
+                itemCount: _tips.length > 5 ? 5 : _tips.length,
+                separatorBuilder: (_, _) => const Divider(height: 1),
+                itemBuilder: (c, i) {
+                  final t = _tips[i];
+                  return ListTile(
+                    dense: true,
+                    leading: const Icon(Icons.add_location_alt_outlined, size: 18),
+                    title: Text(t.name, style: const TextStyle(fontSize: 13)),
+                    subtitle: Text(t.subtitle,
+                        style: const TextStyle(fontSize: 11, color: AppTheme.txt3)),
+                    onTap: () => _pickTipAsPoint(t),
+                  );
+                },
+              ),
+            ),
           Expanded(
             child: AmapNativeView(
               key: _mapKey,

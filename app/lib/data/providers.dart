@@ -4,6 +4,7 @@ import '../core/units.dart';
 import '../domain/stats/aggregate.dart' as k;
 import '../domain/stats/aggregate_service.dart';
 import 'activity_repository.dart';
+import 'poi_service.dart';
 import 'route_repository.dart';
 import 'settings_repository.dart';
 
@@ -78,3 +79,6 @@ final sessionStatusProvider = StateProvider<SessionStatus?>((ref) => null);
 
 /// 底部 Tab 当前下标（供"回到记录"等跨页跳转使用）
 final tabIndexProvider = StateProvider<int>((ref) => 0);
+
+/// 地点搜索（高德输入提示）
+final poiServiceProvider = Provider<PoiService>((ref) => PoiService());

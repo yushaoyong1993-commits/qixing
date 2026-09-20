@@ -19,6 +19,7 @@ class AmapNativeView extends StatefulWidget {
     this.initialZoom = 15,
     this.myLocationEnabled = true,
     this.initialCenter,
+    this.mapType = 'normal',
   });
 
   final void Function(double lng, double lat) onTapLngLat;
@@ -31,6 +32,9 @@ class AmapNativeView extends StatefulWidget {
 
   /// 初始中心 [lng, lat]
   final List<double>? initialCenter;
+
+  /// 底图类型：`normal`（标准）/ `satellite`（卫星）
+  final String mapType;
 
   /// 关闭后强制走占位（测试或排查原生问题时使用）
   static bool enabled = true;
@@ -49,6 +53,7 @@ class AmapNativeViewState extends State<AmapNativeView> {
   /// 最近一次渲染参数（原生就绪前调用会被缓存，就绪后重放）
   Map<String, dynamic>? _lastRender;
   Map<String, dynamic>? _lastRenderNav;
+  String _mapType = 'normal';
   bool _pendingFit = false;
   Map<String, dynamic>? _pendingMove;
 
@@ -103,6 +108,7 @@ class AmapNativeViewState extends State<AmapNativeView> {
   }
 
   void _replayPending() {
+    if (_mapType != widget.mapType) _invoke('setMapType', {'type': _mapType});
     final render = _lastRender;
     if (render != null) _invoke('render', render);
     final nav = _lastRenderNav;
@@ -171,6 +177,12 @@ class AmapNativeViewState extends State<AmapNativeView> {
     _invoke('fitRoute', const {});
   }
 
+  /// 切换底图：`normal` 标准 / `satellite` 卫星
+  void setMapType(String type) {
+    _mapType = type;
+    _invoke('setMapType', {'type': type});
+  }
+
   void refresh() => _invoke('refresh', const {});
 
   /// 与 WebView 版保持同构：原生地图无需销毁重建，这里重放最近渲染内容并刷新即可
@@ -201,6 +213,7 @@ class AmapNativeViewState extends State<AmapNativeView> {
             'zoom': widget.initialZoom,
             'center': widget.initialCenter,
             'myLocationEnabled': widget.myLocationEnabled,
+            'mapType': widget.mapType,
           },
           creationParamsCodec: const StandardMessageCodec(),
           onPlatformViewCreated: _onPlatformViewCreated,

@@ -67,6 +67,18 @@ ndkVersion = "28.2.13676358"
         }
     }
 
+    // 只保留 arm64-v8a：插件 AAR 自带的其它 ABI .so 无法靠 ndk.abiFilters 去除
+    // （会被 Flutter Gradle 插件的 AbiFilters 覆盖），因此用打包期排除，确定性生效。
+    packaging {
+        jniLibs {
+            excludes += listOf(
+                "lib/armeabi-v7a/**",
+                "lib/x86/**",
+                "lib/x86_64/**"
+            )
+        }
+    }
+
     buildTypes {
         release {
             // 混淆/裁剪：必须配合 proguard-rules.pro 中的高德 keep 规则（否则原生地图 JNI 会崩）
