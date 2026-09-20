@@ -10,6 +10,7 @@ import '../../domain/stats/aggregate.dart' as k;
 import '../../theme/app_theme.dart';
 import '../widgets/amap_native_view.dart';
 import '../widgets/ele_speed_chart.dart';
+import '../widgets/track_share_card.dart';
 
 /// 活动详情：指标 + **真实轨迹（高德地图显示）** + 删除。
 class ActivityDetailPage extends ConsumerStatefulWidget {
@@ -58,6 +59,27 @@ class _ActivityDetailPageState extends ConsumerState<ActivityDetailPage> {
     return out;
   }
 
+  /// 生成轨迹分享图（轨迹形状 + 数据面板 → PNG 分享）
+  Future<void> _openShareCard(k.RideLite r) async {
+    final u = ref.read(unitPrefsProvider);
+    final path = _gcjPath();
+    if (!mounted) return;
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ShareCardPage(
+        title: r.name,
+        subtitle: '${r.startAt.year}-${r.startAt.month.toString().padLeft(2, '0')}-'
+            '${r.startAt.day.toString().padLeft(2, '0')} · ${r.type}',
+        path: path,
+        stats: buildShareStats(
+          distanceKm: r.distanceKm,
+          durationMin: r.durationMin,
+          elevGainM: r.elevGainM,
+          u: u,
+        ),
+      ),
+    ));
+  }
+
   void _drawTrack() {
     final st = _mapKey.currentState;
     if (st == null) return;
@@ -83,6 +105,11 @@ class _ActivityDetailPageState extends ConsumerState<ActivityDetailPage> {
       appBar: AppBar(
         title: const Text('骑行详情'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.image_outlined),
+            tooltip: '生成分享图',
+            onPressed: () => _openShareCard(r!),
+          ),
           IconButton(
             icon: const Icon(Icons.ios_share),
             tooltip: '导出 GPX',

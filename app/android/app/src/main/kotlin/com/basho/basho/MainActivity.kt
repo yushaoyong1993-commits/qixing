@@ -6,6 +6,8 @@ import io.flutter.embedding.engine.FlutterEngine
 
 class MainActivity : FlutterActivity() {
 
+    private var offline: AmapOffline? = null
+
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         // 高德合规：必须在任何地图对象创建之前完成（放在最早期更稳）
         MapsInitializer.updatePrivacyShow(this, true, true)
@@ -25,5 +27,8 @@ class MainActivity : FlutterActivity() {
             "basho/amap",
             AmapViewFactory(flutterEngine.dartExecutor.binaryMessenger),
         )
+
+        // 离线地图（高德 OfflineMapManager，反射封装）
+        offline = AmapOffline(this, flutterEngine.dartExecutor.binaryMessenger)
     }
 }

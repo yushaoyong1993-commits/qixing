@@ -90,6 +90,9 @@ class _MapPageState extends ConsumerState<MapPage> {
   /// 底图类型：false=标准，true=卫星
   bool _satellite = false;
 
+  /// 「骑行过去」规划中的目标名（非空时显示进度提示）
+  String? _navPlanning;
+
   @override
   void dispose() {
     _debounce?.cancel();
@@ -124,6 +127,84 @@ class _MapPageState extends ConsumerState<MapPage> {
       [t.lng, t.lat]
     ], path: const []);
     st?.moveTo(t.lng, t.lat, zoom: 16);
+  }
+
+  /// 附近设施：以当前位置为中心按类别搜索（便利店/卫生间/补给等）
+  Future<void> _openNearby() async {
+    var loc = _myLoc;
+    if (loc == null) {
+      final l = await acquireGcjLocation(context, quiet: true);
+      if (!mounted) return;
+      if (l != null) {
+        setState(() => _myLoc = l);
+        loc = l;
+      }
+    }
+    if (!mounted) return;
+    if (loc == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('需要定位后才能搜索附近设施', textAlign: TextAlign.center),
+      ));
+      return;
+    }
+    final center = loc;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => _NearbySheet(
+        center: center,
+        onLocate: (p) => _pickTipFromPlace(p),
+        onNavigate: _rideTo,
+      ),
+    );
+  }
+
+  void _pickTipFromPlace(PoiPlace p) {
+    final st = _mapKey.currentState;
+    st?.render(anchors: [
+      [p.lng, p.lat]
+    ], path: const []);
+    st?.moveTo(p.lng, p.lat, zoom: 16);
+  }
+
+  /// 一键「骑行过去」：规划到该点的骑行路线并进入导航
+  Future<void> _rideTo(PoiPlace p) async {
+    var from = _myLoc;
+    from ??= await acquireGcjLocation(context, quiet: true);
+    if (!mounted) return;
+    if (from == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('需要定位后才能规划路线', textAlign: TextAlign.center),
+      ));
+      return;
+    }
+    setState(() => _navPlanning = p.name);
+    final planner = RoutePlanner();
+    final path = await planner.planRidingGcj(
+      LatLng(from[1], from[0]),
+      LatLng(p.lat, p.lng),
+    );
+    planner.dispose();
+    if (!mounted) return;
+    setState(() => _navPlanning = null);
+    if (path == null || path.points.length < 2) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('路线规划失败，请稍后再试', textAlign: TextAlign.center),
+      ));
+      return;
+    }
+    final pts = [for (final q in path.points) [q.latitude, q.longitude]];
+    final rm = RouteModel(
+      id: -1,
+      name: '前往 ${p.name}',
+      points: pts,
+      distKm: path.distanceM / 1000,
+      createdAt: DateTime.now(),
+    );
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => NavigationPage(route: rm)),
+    );
   }
 
   void _setSatellite(bool on) {
@@ -184,6 +265,11 @@ class _MapPageState extends ConsumerState<MapPage> {
                 : const Icon(Icons.my_location),
             tooltip: '定位到当前位置',
             onPressed: _locating ? null : () => _locate(),
+          ),
+          IconButton(
+            icon: const Icon(Icons.storefront_outlined),
+            tooltip: '附近设施（便利店/卫生间/补给）',
+            onPressed: _openNearby,
           ),
           IconButton(
             icon: const Icon(Icons.add),
@@ -279,6 +365,21 @@ class _MapPageState extends ConsumerState<MapPage> {
               ],
             ),
           ),
+          if (_navPlanning != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+              child: Row(
+                children: [
+                  const SizedBox(
+                      width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text('正在规划前往 $_navPlanning 的骑行路线…',
+                        style: const TextStyle(fontSize: 12, color: AppTheme.accentInk)),
+                  ),
+                ],
+              ),
+            ),
           SizedBox(
             height: 280,
             child: AmapNativeView(
@@ -930,6 +1031,127 @@ class _RouteEditorPageState extends ConsumerState<RouteEditorPage> {
             padding: EdgeInsets.only(bottom: 10),
             child: Text('点两下：A→B 自动按高德骑行路线生成带拐弯的路径（与底图同坐标系）',
                 style: TextStyle(fontSize: 11.5, color: AppTheme.txt3)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 附近设施面板：按类别搜周边（便利店/卫生间/补给/修车…），可定位或一键骑行过去
+class _NearbySheet extends ConsumerStatefulWidget {
+  const _NearbySheet({
+    required this.center,
+    required this.onLocate,
+    required this.onNavigate,
+  });
+
+  /// 搜索中心 [lng, lat]
+  final List<double> center;
+  final void Function(PoiPlace) onLocate;
+  final void Function(PoiPlace) onNavigate;
+
+  @override
+  ConsumerState<_NearbySheet> createState() => _NearbySheetState();
+}
+
+class _NearbySheetState extends ConsumerState<_NearbySheet> {
+  PoiCategory _cat = PoiCategory.all.first;
+  List<PoiPlace> _items = const [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    final items = await ref.read(poiServiceProvider).around(
+          lng: widget.center[0],
+          lat: widget.center[1],
+          keywords: _cat.keyword,
+        );
+    if (!mounted) return;
+    setState(() {
+      _items = items;
+      _loading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: MediaQuery.of(context).size.height * 0.62,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+            child: Row(
+              children: [
+                const Icon(Icons.storefront_outlined, size: 18),
+                const SizedBox(width: 6),
+                const Text('附近设施', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                const Spacer(),
+                Text('半径 3km',
+                    style: const TextStyle(fontSize: 11, color: AppTheme.txt3)),
+              ],
+            ),
+          ),
+          SizedBox(
+            height: 40,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: PoiCategory.all.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 6),
+              itemBuilder: (c, i) {
+                final cat = PoiCategory.all[i];
+                return ChoiceChip(
+                  label: Text(cat.label, style: const TextStyle(fontSize: 12)),
+                  selected: _cat.label == cat.label,
+                  onSelected: (_) {
+                    setState(() => _cat = cat);
+                    _load();
+                  },
+                );
+              },
+            ),
+          ),
+          if (_loading) const LinearProgressIndicator(minHeight: 2),
+          Expanded(
+            child: _items.isEmpty
+                ? Center(
+                    child: Text(_loading ? '' : '附近没有找到${_cat.label}',
+                        style: const TextStyle(fontSize: 12.5, color: AppTheme.txt3)),
+                  )
+                : ListView.separated(
+                    itemCount: _items.length,
+                    separatorBuilder: (_, _) => const Divider(height: 1),
+                    itemBuilder: (c, i) {
+                      final p = _items[i];
+                      return ListTile(
+                        dense: true,
+                        leading: const Icon(Icons.place_outlined, size: 18),
+                        title: Text(p.name, style: const TextStyle(fontSize: 13.5)),
+                        subtitle: Text(p.subtitle,
+                            style: const TextStyle(fontSize: 11.5, color: AppTheme.txt3)),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.navigation_outlined, size: 20),
+                          tooltip: '骑行过去',
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                            widget.onNavigate(p);
+                          },
+                        ),
+                        onTap: () {
+                          Navigator.of(context).pop();
+                          widget.onLocate(p);
+                        },
+                      );
+                    },
+                  ),
           ),
         ],
       ),

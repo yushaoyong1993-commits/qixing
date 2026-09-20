@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/units.dart';
 import '../../data/providers.dart';
 import '../../theme/app_theme.dart';
+import 'offline_map_page.dart';
 
 /// 设置页：显示单位 / 记录默认值 / 数据 / 关于。
 class SettingsPage extends ConsumerWidget {
@@ -98,6 +99,24 @@ class SettingsPage extends ConsumerWidget {
                   onChanged: (v) => repo.set('voice_announce', '$v'),
                 ),
               ],
+            ),
+          ),
+
+          _section('地图与离线'),
+          Card(
+            elevation: 0,
+            shape: _cardShape,
+            child: ListTile(
+              leading: const Icon(Icons.download_for_offline_outlined, size: 20),
+              title: const Text('离线地图', style: TextStyle(fontSize: 14)),
+              subtitle: const Text(
+                '下载城市地图包，无网络时也能查看路网（由高德 SDK 提供）',
+                style: TextStyle(fontSize: 11.5, color: AppTheme.txt3),
+              ),
+              trailing: const Icon(Icons.chevron_right, size: 18),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const OfflineMapPage()),
+              ),
             ),
           ),
 
